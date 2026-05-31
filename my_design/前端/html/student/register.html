@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>读者注册 - 智慧书阁</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
+    <link href="/css/app.css" rel="stylesheet">
+</head>
+<body>
+<div class="login-page">
+    <div class="login-shape login-shape-1"></div>
+    <div class="login-shape login-shape-2"></div>
+    <div class="login-shape login-shape-3"></div>
+    <div class="login-shape login-shape-4"></div>
+    <div class="login-shape login-shape-5"></div>
+    <div class="login-shape login-shape-6"></div>
+    <div class="login-shape login-shape-7"></div>
+    <div class="login-shape login-shape-8"></div>
+
+    <div class="login-glass">
+        <div class="glass-header">
+            <div class="glass-logo"><i class="bi bi-pencil-square"></i></div>
+            <h1>创建读者账号</h1>
+            <p class="tagline">加入智慧书阁，开启阅读之旅</p>
+        </div>
+
+        <div id="msg"></div>
+
+        <form onsubmit="handleRegister(event)">
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="glass-form-group">
+                        <label>用户名 <span style="color:#ef4444;">*</span></label>
+                        <div class="glass-input-wrap">
+                            <input type="text" id="username" placeholder="3-50个字符" required minlength="3">
+                            <div class="input-underline"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="glass-form-group">
+                        <label>真实姓名</label>
+                        <div class="glass-input-wrap">
+                            <input type="text" id="realName" placeholder="选填">
+                            <div class="input-underline"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="glass-form-group">
+                        <label>密码 <span style="color:#ef4444;">*</span></label>
+                        <div class="glass-input-wrap">
+                            <input type="password" id="password" placeholder="至少6位" required minlength="6" oninput="checkPwdStrength(this.value)">
+                            <div class="input-underline"></div>
+                        </div>
+                        <div class="pwd-strength" id="pwdStrength">
+                            <div class="strength-bar"></div>
+                            <div class="strength-bar"></div>
+                            <div class="strength-bar"></div>
+                        </div>
+                        <div class="pwd-strength-text" id="pwdStrengthText"></div>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="glass-form-group">
+                        <label>确认密码 <span style="color:#ef4444;">*</span></label>
+                        <div class="glass-input-wrap">
+                            <input type="password" id="confirmPassword" placeholder="再次输入" required>
+                            <div class="input-underline"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="glass-form-group">
+                        <label>电话</label>
+                        <div class="glass-input-wrap">
+                            <input type="text" id="phone" placeholder="选填">
+                            <div class="input-underline"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="glass-form-group">
+                        <label>邮箱</label>
+                        <div class="glass-input-wrap">
+                            <input type="email" id="email" placeholder="选填">
+                            <div class="input-underline"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="glass-submit" style="margin-top:8px;">
+                <button type="submit" class="btn-rainbow" id="regBtn">
+                    <i class="bi bi-person-plus"></i> 注册
+                </button>
+            </div>
+            <div class="glass-footer">
+                已有账号？<a href="/student/login.html">立即登录</a>
+            </div>
+        </form>
+    </div>
+
+    <div class="login-footer">&copy; 2026 智慧书阁 v2.0 | 用知识照亮未来</div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="/js/app-common.js"></script>
+<script>
+function checkPwdStrength(pwd) {
+    var bars = document.querySelectorAll('.strength-bar');
+    var text = document.getElementById('pwdStrengthText');
+    var len = pwd.length;
+
+    bars.forEach(function(b) { b.className = 'strength-bar'; });
+
+    if (!len) { text.textContent = ''; return; }
+
+    var score = 0;
+    if (len >= 6) score++;
+    if (len >= 10) score++;
+    if (/[a-z]/.test(pwd) && /[A-Z]/.test(pwd)) score++;
+    if (/\d/.test(pwd)) score++;
+    if (/[^a-zA-Z0-9]/.test(pwd)) score++;
+
+    var levels = [
+        { label: '弱 — 建议增加长度和复杂度', class: 'weak', count: 1 },
+        { label: '中等', class: 'medium', count: 2 },
+        { label: '强', class: 'strong', count: 3 }
+    ];
+
+    var level;
+    if (score <= 1 && len < 8) level = levels[0];
+    else if (score <= 2 || len < 10) level = levels[1];
+    else level = levels[2];
+
+    for (var i = 0; i < level.count; i++) { bars[i].classList.add('active', level.class); }
+    text.textContent = level.label;
+}
+
+// 渐入动画：字段被 .row 嵌套，nth-child 不生效，用 JS 设置延迟
+document.querySelectorAll('.glass-form-group').forEach(function(el, i) {
+    el.style.animationDelay = ((i + 1) * 0.1) + 's';
+});
+
+async function handleRegister(e) {
+    e.preventDefault();
+    var pwd = document.getElementById('password').value;
+    var cpwd = document.getElementById('confirmPassword').value;
+    if (pwd !== cpwd) { showAlert('msg', 'danger', '两次密码不一致'); return; }
+
+    var btn = document.getElementById('regBtn');
+    btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> 注册中...';
+
+    var res = await api.post('/auth/register', {
+        username: document.getElementById('username').value.trim(),
+        password: pwd,
+        confirmPassword: cpwd,
+        realName: document.getElementById('realName').value.trim(),
+        phone: document.getElementById('phone').value.trim(),
+        email: document.getElementById('email').value.trim()
+    });
+
+    if (res.code === 200) {
+        showAlert('msg', 'success', '注册成功！3秒后跳转登录页');
+        setTimeout(function(){ window.location.href = '/student/login.html'; }, 3000);
+    } else {
+        showAlert('msg', 'danger', res.message || '注册失败');
+        btn.disabled = false; btn.innerHTML = '<i class="bi bi-person-plus"></i> 注册';
+    }
+}
+</script>
+</body>
+</html>

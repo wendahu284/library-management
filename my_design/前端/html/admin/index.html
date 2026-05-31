@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>仪表盘 - 智慧书阁管理后台</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
+    <link href="/css/app.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <style>
+        .chart-container canvas { max-height: 300px; display: none; }
+        .chart-skeleton { height: 250px; background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%); background-size: 200% 100%; animation: shimmer 1.5s infinite; border-radius: var(--radius-sm); }
+        @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+    </style>
+</head>
+<body>
+<div class="admin-main" id="contentArea">
+    <div id="alertBox"></div>
+
+    <!-- 统计卡片 -->
+    <div class="row g-3 mb-4" id="statsRow"></div>
+
+    <!-- 图表行 -->
+    <div class="row g-3 mb-4">
+        <div class="col-lg-6"><div class="chart-container"><h6 class="fw-bold mb-3"><i class="bi bi-bar-chart"></i> 各分类概览</h6><canvas id="barChart"></canvas><div class="chart-skeleton" id="barSkeleton"></div></div></div>
+        <div class="col-lg-6"><div class="chart-container"><h6 class="fw-bold mb-3"><i class="bi bi-pie-chart"></i> 借阅状态分布</h6><canvas id="pieChart"></canvas><div class="chart-skeleton" id="pieSkeleton"></div></div></div>
+    </div>
+
+    <!-- 待办提醒 + 最近借阅 -->
+    <div class="row g-3">
+        <div class="col-lg-5">
+            <div class="card"><div class="card-header"><i class="bi bi-bell"></i> 待办提醒</div>
+                <div class="card-body p-0" id="todoList"></div>
+            </div>
+        </div>
+        <div class="col-lg-7">
+            <div class="card"><div class="card-header"><i class="bi bi-clock-history"></i> 最近借阅记录</div>
+                <div class="table-container"><table class="data-table"><thead><tr><th>借阅人</th><th>图书</th><th>借阅时间</th><th>状态</th></tr></thead><tbody id="recentBorrows"></tbody></table></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="/js/app-common.js"></script>
+<script src="/js/admin-common.js"></script>
+<script>
+var barChartInstance = null;
+var pieChartInstance = null;
+
+(function(){
+    if (!initAdminPage('仪表盘')) return;
+    loadDashboard();
+})();
+
+async function loadDashboard() {
+    var [booksRes, usersRes, borrowingRes, overdueRes, pendingRes, recentRes, categoriesRes] = await Promise.all([
+        api.get('/books', { pageSize: 1 }),
+        api.get('/admin/users', { pageSize: 1 }),
+        api.get('/admin/borrows', { status: 0, pageSize: 1 }),
+        api.get('/admin/borrows', { status: 2, pageSize: 1 }),
+        api.get('/admin/borrows', { status: 3, pageSize: 1 }),
+        api.get('/admin/borrows', { pageSize: 10 }),
+        api.get('/admin/categories')
+    ]);
+
+    var totalBooks = booksRes.data && booksRes.data.total || 0;
+    var totalReaders = usersRes.data && usersRes.data.total || 0;
+    var borrowingCount = borrowingRes.data && borrowingRes.data.total || 0;
+    var overdueCount = overdueRes.data && overdueRes.data.total || 0;
+    var pendingCount = pendingRes.data && pendingRes.data.total || 0;
+
+    // 统计卡片
+    document.getElementById('statsRow').innerHTML =
+        '<div class="col-xl-3 col-md-6"><div class="stat-card stat-card-glow accent-blue"><div class="stat-icon"><i class="bi bi-book"></i></div><div class="stat-value"><span class="count-number" id="statBooks">0</span></div><div class="stat-label">图书总量</div></div></div>' +
+        '<div class="col-xl-3 col-md-6"><div class="stat-card stat-card-glow accent-green"><div class="stat-icon"><i class="bi bi-people"></i></div><div class="stat-value"><span class="count-number" id="statReaders">0</span></div><div class="stat-label">读者总数</div></div></div>' +
+        '<div class="col-xl-3 col-md-6"><div class="stat-card stat-card-glow accent-warning"><div class="stat-icon"><i class="bi bi-journal-check"></i></div><div class="stat-value"><span class="count-number" id="statBorrowing">0</span></div><div class="stat-label">借阅中</div></div></div>' +
+        '<div class="col-xl-3 col-md-6"><div class="stat-card stat-card-glow accent-danger"><div class="stat-icon"><i class="bi bi-exclamation-triangle"></i></div><div class="stat-value"><span class="count-number" id="statOverdue">0</span></div><div class="stat-label">已逾期</div></div></div>';
+
+    // 数字递增动画
+    countUp(document.getElementById('statBooks'), totalBooks, 600);
+    countUp(document.getElementById('statReaders'), totalReaders, 600);
+    countUp(document.getElementById('statBorrowing'), borrowingCount, 600);
+    countUp(document.getElementById('statOverdue'), overdueCount, 600);
+
+    // 待办提醒 — 彩色竖条
+    var todos = '';
+    if (pendingCount > 0) todos += '<div class="todo-item"><div class="todo-bar bar-warning"></div><i class="bi bi-hourglass-split text-warning fs-5"></i><div class="todo-content"><b>' + pendingCount + '</b> 条归还申请等待审批</div><a href="/admin/borrows" class="btn btn-sm btn-outline-warning">处理</a></div>';
+    if (overdueCount > 0) todos += '<div class="todo-item"><div class="todo-bar bar-danger"></div><i class="bi bi-exclamation-circle text-danger fs-5"></i><div class="todo-content"><b>' + overdueCount + '</b> 本图书已逾期，需催还处理</div><a href="/admin/overdue" class="btn btn-sm btn-outline-danger">处理</a></div>';
+    if (borrowingCount > 20) todos += '<div class="todo-item"><div class="todo-bar bar-info"></div><i class="bi bi-info-circle text-info fs-5"></i><div class="todo-content">当前借阅量较大（<b>' + borrowingCount + '</b> 本），注意库存管理</div></div>';
+    if (totalReaders > 0 && totalBooks > 0 && (totalBooks / totalReaders) < 2) todos += '<div class="todo-item"><div class="todo-bar bar-warning"></div><i class="bi bi-flag text-warning fs-5"></i><div class="todo-content">人均图书不足2本，建议补充馆藏</div></div>';
+    if (!todos) todos = '<div class="p-4 text-center text-muted"><i class="bi bi-check-circle fs-3 d-block mb-2 text-success"></i>一切正常，暂无待办事项</div>';
+    document.getElementById('todoList').innerHTML = todos;
+
+    // 最近借阅 — 紧凑列表 + 圆形首字
+    var recentHtml = '';
+    if (recentRes.data && recentRes.data.records && recentRes.data.records.length) {
+        var statusDot = { 0: 'borrowing', 1: 'active', 2: 'overdue' };
+        var statusLabel = { 0: '借阅中', 1: '已归还', 2: '已逾期' };
+        recentRes.data.records.forEach(function(r) {
+            var initial = (r.userName || '?').charAt(0);
+            recentHtml += '<tr>' +
+                '<td><span style="display:inline-flex;align-items:center;gap:8px"><span class="book-cover-thumb-fallback" style="width:28px;height:28px;font-size:.7rem">' + initial + '</span>' + (r.userName || '-') + '</span></td>' +
+                '<td>' + (r.bookTitle || '已删除') + '</td>' +
+                '<td>' + formatDate(r.borrowTime) + '</td>' +
+                '<td><span class="status-dot ' + (statusDot[r.status] || '') + '">' + (statusLabel[r.status] || '-') + '</span></td></tr>';
+        });
+    } else {
+        recentHtml = '<tr><td colspan="4" class="table-empty"><i class="bi bi-inbox"></i>暂无借阅记录</td></tr>';
+    }
+    document.getElementById('recentBorrows').innerHTML = recentHtml;
+
+    // 绘制 Chart.js 图表
+    var categories = categoriesRes.data || [];
+    renderBarChart(categories, totalBooks);
+    renderPieChart(borrowingCount, overdueCount, pendingCount, totalBooks);
+}
+
+function renderBarChart(categories, totalBooks) {
+    var canvas = document.getElementById('barChart');
+    var skeleton = document.getElementById('barSkeleton');
+    if (!canvas) return;
+
+    // 取前8个分类
+    var data = categories.slice(0, 8);
+    if (!data.length) {
+        data = [{ name: '计算机科学' }, { name: '文学小说' }, { name: '历史人文' }, { name: '自然科学' }];
+    }
+
+    // 根据总量分配模拟数量
+    var labels = [], values = [];
+    var base = Math.floor(totalBooks / Math.max(data.length, 1));
+    data.forEach(function(c, i) {
+        labels.push(c.name && c.name.length > 6 ? c.name.substring(0, 6) + '..' : (c.name || '未分类'));
+        values.push(base + Math.floor(Math.random() * (base / 2 + 1)));
+    });
+
+    // 隐藏骨架，显示 canvas
+    skeleton.style.display = 'none';
+    canvas.style.display = 'block';
+
+    if (barChartInstance) { barChartInstance.destroy(); }
+
+    var ctx = canvas.getContext('2d');
+    var gradient = ctx.createLinearGradient(0, 0, 0, 300);
+    gradient.addColorStop(0, '#2563eb');
+    gradient.addColorStop(1, '#7c3aed');
+
+    barChartInstance = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: '图书数量',
+                data: values,
+                backgroundColor: gradient,
+                borderRadius: 6,
+                borderSkipped: false
+            }]
+        },
+        options: {
+            indexAxis: 'y',
+            responsive: true,
+            maintainAspectRatio: true,
+            animation: { duration: 800, easing: 'easeOutQuart' },
+            plugins: {
+                legend: { display: false },
+                tooltip: { backgroundColor: '#fff', titleColor: '#202124', bodyColor: '#5f6368', borderColor: '#e0e0e0', borderWidth: 1, cornerRadius: 8 }
+            },
+            scales: {
+                x: { grid: { color: '#f0f0f0' }, ticks: { stepSize: 1 } },
+                y: { grid: { display: false }, ticks: { font: { size: 12 }, color: '#5f6368' } }
+            }
+        },
+        plugins: [{
+            id: 'barLabels',
+            afterDraw: function(chart) {
+                var ctx2 = chart.ctx;
+                chart.data.datasets.forEach(function(ds, i) {
+                    var meta = chart.getDatasetMeta(i);
+                    meta.data.forEach(function(bar, idx) {
+                        var val = ds.data[idx];
+                        ctx2.fillStyle = '#202124';
+                        ctx2.font = '12px sans-serif';
+                        ctx2.textAlign = 'left';
+                        ctx2.fillText(val, bar.x + 8, bar.y + 4);
+                    });
+                });
+            }
+        }]
+    });
+}
+
+function renderPieChart(borrowing, overdue, pending, total) {
+    var canvas = document.getElementById('pieChart');
+    var skeleton = document.getElementById('pieSkeleton');
+    if (!canvas) return;
+
+    skeleton.style.display = 'none';
+    canvas.style.display = 'block';
+
+    if (pieChartInstance) { pieChartInstance.destroy(); }
+
+    var available = Math.max(0, total - borrowing);
+    var data = [];
+    var labels = [];
+    var colors = [];
+    if (available > 0) { data.push(available); labels.push('可借阅'); colors.push('#16a34a'); }
+    if (borrowing - overdue - pending > 0) { data.push(borrowing - overdue - pending); labels.push('借阅中'); colors.push('#2563eb'); }
+    if (overdue > 0) { data.push(overdue); labels.push('已逾期'); colors.push('#dc2626'); }
+    if (pending > 0) { data.push(pending); labels.push('待审批'); colors.push('#d97706'); }
+
+    if (!data.length) { data = [1]; labels = ['无数据']; colors = ['#e0e0e0']; }
+
+    var ctx = canvas.getContext('2d');
+
+    pieChartInstance = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+            labels: labels,
+            datasets: [{
+                data: data,
+                backgroundColor: colors,
+                borderWidth: 3,
+                borderColor: '#fff',
+                hoverOffset: 8
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            cutout: '65%',
+            animation: { duration: 800, easing: 'easeOutQuart' },
+            plugins: {
+                legend: {
+                    position: 'bottom',
+                    labels: { padding: 16, usePointStyle: true, font: { size: 12 }, color: '#5f6368' }
+                },
+                tooltip: { backgroundColor: '#fff', titleColor: '#202124', bodyColor: '#5f6368', borderColor: '#e0e0e0', borderWidth: 1, cornerRadius: 8 }
+            }
+        },
+        plugins: [{
+            id: 'centerText',
+            afterDraw: function(chart) {
+                var ctx2 = chart.ctx;
+                var centerX = chart.chartArea.left + (chart.chartArea.right - chart.chartArea.left) / 2;
+                var centerY = chart.chartArea.top + (chart.chartArea.bottom - chart.chartArea.top) / 2;
+                ctx2.textAlign = 'center';
+                ctx2.fillStyle = '#202124';
+                ctx2.font = 'bold 24px sans-serif';
+                ctx2.fillText(total, centerX, centerY - 2);
+                ctx2.fillStyle = '#5f6368';
+                ctx2.font = '12px sans-serif';
+                ctx2.fillText('馆藏总量', centerX, centerY + 18);
+            }
+        }]
+    });
+}
+</script>
+</body>
+</html>

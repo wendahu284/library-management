@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>图书详情 - 智慧书阁</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
+    <link href="/css/app.css" rel="stylesheet">
+</head>
+<body>
+<a href="/student/books" class="btn-back-float"><i class="bi bi-arrow-left"></i> 返回检索</a>
+
+<div class="container book-detail-page">
+    <div id="msg"></div>
+
+    <!-- 骨架屏 -->
+    <div id="skeleton">
+        <div class="row">
+            <div class="col-md-5"><div class="skeleton" style="height:400px;border-radius:14px;"></div></div>
+            <div class="col-md-7">
+                <div class="skeleton" style="height:36px;width:70%;margin-bottom:16px;"></div>
+                <div class="skeleton" style="height:18px;width:50%;margin-bottom:12px;"></div>
+                <div class="skeleton" style="height:18px;width:60%;margin-bottom:12px;"></div>
+                <div class="skeleton" style="height:18px;width:40%;margin-bottom:20px;"></div>
+                <div class="skeleton" style="height:80px;width:100%;margin-bottom:20px;"></div>
+                <div class="skeleton" style="height:48px;width:100%;border-radius:12px;"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row" id="detail" style="display:none;"></div>
+
+    <div class="mt-5 mb-4 position-relative" id="similarSection" style="display:none;">
+        <h6 class="fw-bold mb-3"><i class="bi bi-bookmark"></i> 同类推荐</h6>
+        <button class="scroll-arrow scroll-arrow-left" onclick="scrollSimilar(-200)"><i class="bi bi-chevron-left"></i></button>
+        <div class="similar-scroll" id="similarBooks"></div>
+        <button class="scroll-arrow scroll-arrow-right" onclick="scrollSimilar(200)"><i class="bi bi-chevron-right"></i></button>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="/js/app-common.js"></script>
+<script src="/js/student-common.js"></script>
+<script>
+var bid = new URLSearchParams(location.search).get('id');
+if (!bid) location.href = '/student/books';
+renderStudentNav();
+
+(function(){
+    loadDetail();
+})();
+
+function scrollSimilar(offset) {
+    var el = document.getElementById('similarBooks');
+    if (el) el.scrollBy({ left: offset, behavior: 'smooth' });
+}
+
+async function loadDetail() {
+    var res = await api.get('/books/' + bid);
+    if (res.code !== 200) { location.href = '/student/books'; return; }
+    var b = res.data;
+
+    document.getElementById('skeleton').style.display = 'none';
+    document.getElementById('detail').style.display = '';
+
+    var coverUrl = getCoverUrl(b, 'L');
+    var coverHtml = coverUrl
+        ? '<img src="' + coverUrl + '" class="cover-img" alt="' + b.title + '" onerror="this.outerHTML=\'<div class=\\\'cover-img\\\' style=\\\'height:400px;background:linear-gradient(135deg,#667eea,#764ba2);display:flex;align-items:center;justify-content:center;color:#fff;font-size:3rem;font-weight:700;\\\'>' + (b.title ? b.title.charAt(0) : '?') + '</div>\'">'
+        : '<div class="cover-img" style="height:400px;background:linear-gradient(135deg,#667eea,#764ba2);display:flex;align-items:center;justify-content:center;color:#fff;font-size:3rem;font-weight:700;">' + (b.title ? b.title.charAt(0) : '?') + '</div>';
+
+    document.getElementById('detail').innerHTML =
+        '<div class="col-md-5"><div class="book-detail-cover">' + coverHtml + '</div></div>' +
+        '<div class="col-md-7"><div class="book-detail-info">' +
+            '<h1 class="detail-title">' + b.title + '</h1>' +
+            '<div class="detail-meta">' +
+                '<span class="meta-item"><i class="bi bi-person"></i> ' + (b.author || '暂无') + '</span>' +
+                '<span class="meta-item"><i class="bi bi-building"></i> ' + (b.publisher || '暂无') + '</span>' +
+                '<span class="meta-item"><i class="bi bi-upc-scan"></i> ' + (b.isbn || '暂无') + '</span>' +
+                '<span class="meta-item"><i class="bi bi-tag"></i> ' + (b.categoryName || '未分类') + '</span>' +
+            '</div>' +
+            '<div class="mb-3">' +
+                '<span class="badge badge-success" style="font-size:.85rem;padding:6px 14px;">可借 ' + (b.availableQuantity || 0) + ' / 共 ' + (b.totalQuantity || 0) + '</span>' +
+            '</div>' +
+            '<div class="detail-desc"><p>' + (b.description || '暂无简介') + '</p></div>' +
+            '<div class="detail-action" id="actionArea"></div>' +
+        '</div></div>';
+
+    // 借阅按钮
+    var user = auth.getUser();
+    var actionEl = document.getElementById('actionArea');
+    if (user) {
+        var myBorrows = await api.get('/borrow/my');
+        var alreadyBorrowed = (myBorrows.data || []).some(function(r) { return r.bookId == b.id && (r.status === 0 || r.status === 2); });
+        if (alreadyBorrowed) {
+            actionEl.innerHTML = '<button class="btn-action" style="background:#e5e7eb;color:#6b7280;cursor:default;"><i class="bi bi-check-lg"></i> 已借阅</button>';
+        } else if (b.availableQuantity > 0) {
+            actionEl.innerHTML = '<button class="btn-action" style="background:linear-gradient(135deg,#16a34a,#22d3ee);color:#fff;" onclick="borrowBook(' + b.id + ')"><i class="bi bi-journal-plus"></i> 立即借阅</button>';
+        } else {
+            actionEl.innerHTML = '<button class="btn-action" style="background:#fef3c7;color:#92400e;cursor:default;"><i class="bi bi-x-circle"></i> 已全部借出</button>';
+        }
+    } else {
+        actionEl.innerHTML = '<a href="/student/login.html" class="btn-action" style="background:linear-gradient(135deg,#2563eb,#7c3aed);color:#fff;text-align:center;text-decoration:none;"><i class="bi bi-box-arrow-in-right"></i> 登录后借阅</a>';
+    }
+
+    // 同类推荐 — 横向滚动
+    if (b.categoryId) {
+        var similarRes = await api.get('/books', { categoryId: b.categoryId, pageSize: 6 });
+        var simHtml = '';
+        var similarItems = (similarRes.data && similarRes.data.records || []).filter(function(s) { return s.id != b.id; }).slice(0, 6);
+        if (similarItems.length) {
+            similarItems.forEach(function(s) {
+                var sCover = getCoverUrl(s, 'M');
+                var sCoverHtml = sCover
+                    ? '<img src="' + sCover + '" class="sim-cover" alt="" onerror="this.outerHTML=\'<div class=\\\'sim-cover\\\' style=\\\'background:linear-gradient(135deg,#667eea,#764ba2);display:flex;align-items:center;justify-content:center;color:#fff;font-size:1.5rem;font-weight:700;\\\'>' + (s.title ? s.title.charAt(0) : '?') + '</div>\'">'
+                    : '<div class="sim-cover" style="background:linear-gradient(135deg,#667eea,#764ba2);display:flex;align-items:center;justify-content:center;color:#fff;font-size:1.5rem;font-weight:700;">' + (s.title ? s.title.charAt(0) : '?') + '</div>';
+                simHtml += '<div class="similar-card"><div class="card-inner" onclick="location.href=\'/student/book-detail?id=' + s.id + '\'">' +
+                    sCoverHtml +
+                    '<div class="sim-info"><div class="sim-title">' + s.title + '</div></div></div></div>';
+            });
+            document.getElementById('similarBooks').innerHTML = simHtml;
+            document.getElementById('similarSection').style.display = '';
+        }
+    }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title id="pageTitle">图书编辑 - 智慧书阁管理后台</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
+    <link href="/css/app.css" rel="stylesheet">
+</head>
+<body>
+<div class="admin-main" id="contentArea">
+    <div class="breadcrumb-custom">
+        <a href="/admin/books">图书管理</a>
+        <span class="separator">/</span>
+        <span id="formTitle">添加图书</span>
+    </div>
+    <div id="alertBox"></div>
+
+    <!-- 骨架屏 -->
+    <div id="formSkeleton">
+        <div class="skeleton" style="height:300px;border-radius:10px;margin-bottom:20px;"></div>
+    </div>
+
+    <div class="card shadow-sm" id="formCard" style="display:none;"><div class="card-body p-4">
+        <form onsubmit="saveBook(event)">
+            <input type="hidden" id="bookId">
+            <div class="row g-4">
+                <div class="col-md-8">
+                    <div class="float-label-group">
+                        <input type="text" id="title" required placeholder=" ">
+                        <label>书名 <span style="color:#ef4444;">*</span></label>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="float-label-group">
+                                <input type="text" id="isbn" placeholder=" ">
+                                <label>ISBN</label>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="float-label-group">
+                                <input type="text" id="author" placeholder=" ">
+                                <label>作者</label>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="float-label-group">
+                                <input type="text" id="publisher" placeholder=" ">
+                                <label>出版社</label>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="float-label-group">
+                                <select id="categoryId"><option value="">&nbsp;</option></select>
+                                <label>分类</label>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="float-label-group">
+                                <input type="number" id="totalQuantity" value="1" min="0" placeholder=" ">
+                                <label>总数量</label>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="float-label-group">
+                                <input type="number" id="availableQuantity" value="1" min="0" placeholder=" ">
+                                <label>可借数量</label>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="float-label-group">
+                        <textarea id="description" rows="4" placeholder=" "></textarea>
+                        <label>简介</label>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label fw-bold">封面预览</label>
+                    <div class="cover-preview-lg" id="coverPreview">
+                        <div class="upload-placeholder"><i class="bi bi-plus-circle"></i>添加封面图片<div class="small">输入ISBN自动获取封面</div></div>
+                    </div>
+                    <div class="mt-2">
+                        <div class="float-label-group">
+                            <input type="text" id="coverUrl" placeholder=" " oninput="previewCover()">
+                            <label>封面图片URL</label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="mt-4">
+                <button type="submit" class="btn btn-primary btn-lg w-100" style="background:linear-gradient(135deg,#2563eb,#7c3aed);border:none;position:relative;overflow:hidden;" id="saveBtn">
+                    <i class="bi bi-check-lg"></i> 保存
+                </button>
+            </div>
+        </form>
+    </div></div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="/js/app-common.js"></script>
+<script src="/js/admin-common.js"></script>
+<script>
+var editId = new URLSearchParams(location.search).get('id');
+
+(function(){
+    if (!initAdminPage('图书管理')) return;
+    document.getElementById('pageTitle').textContent = editId ? '编辑图书 - 智慧书阁管理后台' : '添加图书 - 智慧书阁管理后台';
+    document.getElementById('formTitle').textContent = editId ? '编辑图书' : '添加图书';
+    loadForm();
+})();
+
+async function loadForm() {
+    var catsRes = await api.get('/admin/categories');
+    var catSelect = document.getElementById('categoryId');
+    if (catsRes.data) catsRes.data.forEach(function(c) {
+        catSelect.innerHTML += '<option value="' + c.id + '">' + c.name + '</option>';
+    });
+
+    if (editId) {
+        var res = await api.get('/books/' + editId);
+        if (res.code === 200) {
+            var b = res.data;
+            document.getElementById('bookId').value = b.id;
+            document.getElementById('title').value = b.title || '';
+            document.getElementById('isbn').value = b.isbn || '';
+            document.getElementById('author').value = b.author || '';
+            document.getElementById('publisher').value = b.publisher || '';
+            document.getElementById('categoryId').value = b.categoryId || '';
+            document.getElementById('totalQuantity').value = b.totalQuantity || 1;
+            document.getElementById('availableQuantity').value = b.availableQuantity || 1;
+            document.getElementById('description').value = b.description || '';
+            document.getElementById('coverUrl').value = b.coverUrl || '';
+            previewCover();
+        }
+    }
+
+    document.getElementById('formSkeleton').style.display = 'none';
+    document.getElementById('formCard').style.display = '';
+}
+
+function previewCover() {
+    var url = document.getElementById('coverUrl').value.trim();
+    var title = document.getElementById('title').value || '?';
+    var preview = document.getElementById('coverPreview');
+    if (url) {
+        preview.innerHTML = '<img src="' + url + '" alt="" onerror="this.outerHTML=\'<div class=\\\'upload-placeholder\\\'><i class=\\\'bi bi-image\\\'></i>图片加载失败</div>\'">';
+        preview.classList.add('has-cover');
+    } else {
+        preview.innerHTML = '<div class="upload-placeholder"><i class="bi bi-plus-circle"></i>添加封面图片<div class="small">输入ISBN自动获取封面</div></div>';
+        preview.classList.remove('has-cover');
+    }
+}
+document.getElementById('isbn').addEventListener('input', previewCover);
+document.getElementById('title').addEventListener('input', previewCover);
+
+async function saveBook(e) {
+    e.preventDefault();
+    var data = {
+        title: document.getElementById('title').value.trim(),
+        isbn: document.getElementById('isbn').value.trim() || null,
+        author: document.getElementById('author').value.trim() || null,
+        publisher: document.getElementById('publisher').value.trim() || null,
+        categoryId: parseInt(document.getElementById('categoryId').value) || null,
+        totalQuantity: parseInt(document.getElementById('totalQuantity').value) || 1,
+        availableQuantity: parseInt(document.getElementById('availableQuantity').value) || 1,
+        description: document.getElementById('description').value.trim() || null,
+        coverUrl: document.getElementById('coverUrl').value.trim() || null
+    };
+    var id = document.getElementById('bookId').value;
+    var btn = document.getElementById('saveBtn');
+    btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> 保存中...';
+    var res = id ? await api.put('/admin/books/' + id, data) : await api.post('/admin/books', data);
+    if (res.code === 200) {
+        showToast('success', id ? '更新成功' : '添加成功');
+        if (!id) { document.querySelector('form').reset(); previewCover(); }
+    } else {
+        showToast('error', res.message);
+    }
+    btn.disabled = false; btn.innerHTML = '<i class="bi bi-check-lg"></i> 保存';
+}
+</script>
+</body>
+</html>

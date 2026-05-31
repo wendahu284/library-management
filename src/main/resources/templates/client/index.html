@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>智慧书阁 - 在线图书馆</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
+    <link href="/css/app.css" rel="stylesheet">
+    <style>
+        .book-card { transition: transform .2s; cursor: pointer; border-radius: 8px; overflow: hidden; }
+        .book-card:hover { transform: translateY(-4px); box-shadow: 0 8px 25px rgba(0,0,0,.15); }
+        .book-cover { height: 220px; overflow: hidden; }
+    </style>
+</head>
+<body>
+<div class="client-redirect-banner">📢 此页面已升级，<a href="/student/">点击前往新版</a></div>
+<nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+    <div class="container">
+        <a class="navbar-brand fw-bold" href="/"><i class="bi bi-book-half"></i> 智慧书阁</a>
+        <div id="navRight"></div>
+    </div>
+</nav>
+
+<div class="bg-light py-3 border-bottom">
+    <div class="container">
+        <div class="row g-2">
+            <div class="col-md-6"><input type="text" id="keyword" class="form-control" placeholder="搜索书名、作者或ISBN..."></div>
+            <div class="col-md-4"><select id="categoryFilter" class="form-select"><option value="">全部分类</option></select></div>
+            <div class="col-md-2"><button class="btn btn-primary w-100" onclick="searchBooks()"><i class="bi bi-search"></i> 搜索</button></div>
+        </div>
+    </div>
+</div>
+
+<div class="container my-4">
+    <div id="alertBox"></div>
+    <div class="row" id="bookList"></div>
+    <nav id="pagination"></nav>
+</div>
+
+<footer class="bg-dark text-white py-3 mt-5 text-center"><small>&copy; 2026 智慧书阁</small></footer>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="/js/common.js"></script>
+<script>
+// 页面加载
+loadCategories();
+searchBooks();
+renderNav();
+
+function loadCategories() {
+    fetch('/api/admin/categories').then(r=>r.json()).then(res=>{
+        if(res.code===200) res.data.forEach(c=>{
+            document.getElementById('categoryFilter').innerHTML += `<option value="${c.id}">${c.name}</option>`;
+        });
+    }).catch(()=>{});
+}
+
+function searchBooks(page=1) {
+    const kw = document.getElementById('keyword').value;
+    const cid = document.getElementById('categoryFilter').value;
+    fetch(`/api/books?pageNum=${page}&pageSize=12&keyword=${encodeURIComponent(kw)}&categoryId=${cid}`)
+        .then(r=>r.json()).then(res=>{
+            if(res.code!==200) return;
+            const data = res.data;
+            let html = '';
+            if(!data.records||data.records.length===0) {
+                html = '<div class="col-12 text-center py-5 text-muted"><i class="bi bi-inbox" style="font-size:3rem"></i><p class="mt-2">暂无图书</p></div>';
+            } else {
+                data.records.forEach(b=>{
+                    html += `<div class="col-md-3 col-sm-6 mb-3" onclick="location.href='/client/book-detail?id=${b.id}'">
+                        <div class="card book-card h-100 shadow-sm">
+                            <div class="book-cover">${getCoverHtml(b, 'small')}</div>
+                            <div class="card-body">
+                                <h6 class="text-truncate">${b.title}</h6>
+                                <small class="text-muted">${b.author||'佚名'} / ${b.publisher||'未知'}</small>
+                                <div class="mt-2"><span class="badge bg-success">可借 ${b.availableQuantity}</span>
+                                <span class="badge bg-info ms-1">${b.categoryName||'未分类'}</span></div>
+                            </div>
+                        </div></div>`;
+                });
+            }
+            document.getElementById('bookList').innerHTML = html;
+            // 分页
+            let pg = '';
+            if(data.totalPages>1){
+                pg += `<ul class="pagination justify-content-center">`;
+                pg += `<li class="page-item ${data.pageNum<=1?'disabled':''}"><a class="page-link" href="javascript:searchBooks(${data.pageNum-1})">上一页</a></li>`;
+                pg += `<li class="page-item disabled"><span class="page-link">${data.pageNum}/${data.totalPages} (共${data.total}条)</span></li>`;
+                pg += `<li class="page-item ${data.pageNum>=data.totalPages?'disabled':''}"><a class="page-link" href="javascript:searchBooks(${data.pageNum+1})">下一页</a></li>`;
+                pg += `</ul>`;
+            }
+            document.getElementById('pagination').innerHTML = pg;
+        });
+}
+</script>
+</body>
+</html>

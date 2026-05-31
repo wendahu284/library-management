@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>读者管理 - 智慧书阁管理后台</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
+    <link href="/css/app.css" rel="stylesheet">
+</head>
+<body>
+<div class="admin-main" id="contentArea">
+    <div id="alertBox"></div>
+    <div class="filter-bar">
+        <input type="text" id="keyword" class="form-control" placeholder="搜索用户名或姓名...">
+        <select id="statusFilter" class="form-select"><option value="">全部</option><option value="1">正常</option><option value="0">已禁用</option></select>
+        <button class="btn btn-primary btn-sm" onclick="loadUsers(1)"><i class="bi bi-search"></i> 搜索</button>
+        <div class="filter-spacer"></div>
+        <button class="btn btn-success btn-sm" onclick="showAddUserModal()"><i class="bi bi-person-plus"></i> 添加读者</button>
+    </div>
+    <div class="table-container">
+        <table class="data-table"><thead><tr><th>用户名</th><th>姓名</th><th>电话</th><th>邮箱</th><th>状态</th><th>注册时间</th><th style="width:90px">操作</th></tr></thead><tbody id="tbody"></tbody></table>
+    </div>
+    <div id="pagination"></div>
+</div>
+
+<!-- 添加用户弹窗 -->
+<div class="modal fade" id="userModal" tabindex="-1">
+    <div class="modal-dialog"><div class="modal-content">
+        <div class="modal-header"><h5 class="modal-title">添加读者</h5><button class="btn-close" data-bs-dismiss="modal"></button></div>
+        <div class="modal-body"><div id="userModalMsg"></div>
+            <form onsubmit="addUser(event)">
+                <div class="mb-3"><label class="form-label">用户名 <span class="required">*</span></label><input type="text" id="newUsername" class="form-control" required minlength="3"></div>
+                <div class="row mb-3"><div class="col-md-6"><label class="form-label">密码 <span class="required">*</span></label><input type="password" id="newPassword" class="form-control" required minlength="6"></div>
+                <div class="col-md-6"><label class="form-label">确认密码 <span class="required">*</span></label><input type="password" id="newConfirmPwd" class="form-control" required></div></div>
+                <div class="mb-3"><label class="form-label">真实姓名</label><input type="text" id="newRealName" class="form-control"></div>
+                <div class="row mb-3"><div class="col-md-6"><label class="form-label">电话</label><input type="text" id="newPhone" class="form-control"></div>
+                <div class="col-md-6"><label class="form-label">邮箱</label><input type="email" id="newEmail" class="form-control"></div></div>
+                <button type="submit" class="btn btn-primary w-100">创建账号</button>
+            </form>
+        </div>
+    </div></div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="/js/app-common.js"></script>
+<script src="/js/admin-common.js"></script>
+<script>
+var userModal, currentPage = 1;
+
+(function(){
+    if (!initAdminPage('读者管理')) return;
+    userModal = new bootstrap.Modal(document.getElementById('userModal'));
+    loadUsers(1);
+})();
+
+async function loadUsers(page) {
+    currentPage = page;
+    var res = await api.get('/admin/users', { pageNum: page });
+    var html = '';
+    if (res.data && res.data.records && res.data.records.length) {
+        res.data.records.forEach(function(u) {
+            var dotClass = u.status === 1 ? 'active' : 'disabled';
+            var statusText = u.status === 1 ? '正常' : '已禁用';
+            var toggleLabel = u.status === 1 ? '禁用' : '启用';
+            var toggleClass = u.status === 1 ? 'btn-outline-danger' : 'btn-outline-success';
+            html += '<tr>' +
+                '<td><span class="fw-medium">' + u.username + '</span></td>' +
+                '<td>' + (u.realName || '-') + '</td>' +
+                '<td>' + (u.phone || '-') + '</td>' +
+                '<td class="text-muted" style="font-size:.8rem">' + (u.email || '-') + '</td>' +
+                '<td><span class="status-dot ' + dotClass + '">' + statusText + '</span></td>' +
+                '<td>' + formatDate(u.createTime) + '</td>' +
+                '<td><div class="row-actions"><button class="btn btn-sm ' + toggleClass + '" onclick="toggleStatus(' + u.id + ')"><i class="bi bi-power"></i> ' + toggleLabel + '</button></div></td></tr>';
+        });
+    } else {
+        html = '<tr><td colspan="7"><div class="table-empty"><div class="empty-svg"><svg width="80" height="80" viewBox="0 0 80 80" fill="none"><circle cx="40" cy="30" r="14" stroke="#d0d5dd" stroke-width="2" fill="#f8f9fa"/><path d="M14 70 C14 54 26 48 40 48 C54 48 66 54 66 70" stroke="#d0d5dd" stroke-width="2" fill="none"/></svg></div><div class="empty-title">暂无读者数据</div><div class="empty-desc">还没有注册的读者</div></div></td></tr>';
+    }
+    document.getElementById('tbody').innerHTML = html;
+    renderPagination('pagination', res.data, 'loadUsers');
+}
+
+async function toggleStatus(id) {
+    var res = await api.put('/admin/users/' + id + '/status');
+    if (res.code === 200) { showToast('success', '状态更新成功'); loadUsers(currentPage); }
+    else showToast('error', res.message);
+}
+
+function showAddUserModal() { userModal.show(); }
+
+async function addUser(e) {
+    e.preventDefault();
+    var pwd = document.getElementById('newPassword').value;
+    if (pwd !== document.getElementById('newConfirmPwd').value) {
+        showAlert('userModalMsg', 'danger', '两次密码不一致'); return;
+    }
+    var res = await api.post('/auth/register', {
+        username: document.getElementById('newUsername').value.trim(),
+        password: pwd, confirmPassword: pwd,
+        realName: document.getElementById('newRealName').value.trim(),
+        phone: document.getElementById('newPhone').value.trim(),
+        email: document.getElementById('newEmail').value.trim()
+    });
+    if (res.code === 200) { showToast('success', '读者添加成功'); userModal.hide(); loadUsers(currentPage); }
+    else showAlert('userModalMsg', 'danger', res.message);
+}
+</script>
+</body>
+</html>

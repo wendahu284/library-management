@@ -1,0 +1,149 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.library.mapper.BorrowRecordMapper">
+
+    <!-- 基本映射 -->
+    <resultMap id="BaseResultMap" type="com.library.entity.BorrowRecord">
+        <id     property="id"          column="id"/>
+        <result property="userId"      column="user_id"/>
+        <result property="bookId"      column="book_id"/>
+        <result property="borrowTime"  column="borrow_time"/>
+        <result property="dueTime"     column="due_time"/>
+        <result property="returnTime"  column="return_time"/>
+        <result property="overdueDays" column="overdue_days"/>
+        <result property="status"      column="status"/>
+    </resultMap>
+
+    <!-- 借阅VO映射（关联用户名和图书名） -->
+    <resultMap id="BorrowVOMap" type="com.library.vo.BorrowVO">
+        <id     property="id"          column="id"/>
+        <result property="userId"      column="user_id"/>
+        <result property="userName"    column="user_name"/>
+        <result property="bookId"      column="book_id"/>
+        <result property="bookTitle"   column="book_title"/>
+        <result property="bookIsbn"    column="book_isbn"/>
+        <result property="borrowTime"  column="borrow_time"/>
+        <result property="dueTime"     column="due_time"/>
+        <result property="returnTime"  column="return_time"/>
+        <result property="overdueDays" column="overdue_days"/>
+        <result property="status"      column="status"/>
+    </resultMap>
+
+    <!-- 插入借阅记录 -->
+    <insert id="insert" parameterType="com.library.entity.BorrowRecord" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO `borrow_record` (`user_id`, `book_id`, `borrow_time`, `due_time`, `status`)
+        VALUES (#{userId}, #{bookId}, #{borrowTime}, #{dueTime}, #{status})
+    </insert>
+
+    <!-- 根据ID查询 -->
+    <select id="selectById" resultMap="BaseResultMap">
+        SELECT * FROM `borrow_record` WHERE `id` = #{id}
+    </select>
+
+    <!-- 更新归还信息 -->
+    <update id="updateReturnInfo" parameterType="com.library.entity.BorrowRecord">
+        UPDATE `borrow_record`
+        SET `return_time`  = #{returnTime},
+            `overdue_days` = #{overdueDays},
+            `status`       = #{status}
+        WHERE `id` = #{id}
+    </update>
+
+    <!-- 查询用户当前借阅数量（借阅中+已逾期） -->
+    <select id="countActiveByUserId" resultType="java.lang.Integer">
+        SELECT COUNT(*) FROM `borrow_record`
+        WHERE `user_id` = #{userId} AND `status` IN (0, 2, 3)
+    </select>
+
+    <!-- 查询用户是否已借过某书且未归还 -->
+    <select id="countByUserIdAndBookId" resultType="java.lang.Integer">
+        SELECT COUNT(*) FROM `borrow_record`
+        WHERE `user_id` = #{userId} AND `book_id` = #{bookId} AND `status` IN (0, 2)
+    </select>
+
+    <!-- 查询用户借阅记录（关联图书名） -->
+    <select id="selectByUserId" resultMap="BorrowVOMap">
+        SELECT br.*,
+               b.`title`  AS `book_title`,
+               b.`isbn`   AS `book_isbn`
+        FROM `borrow_record` br
+        LEFT JOIN `book` b ON br.`book_id` = b.`id`
+        WHERE br.`user_id` = #{userId}
+        ORDER BY br.`borrow_time` DESC
+    </select>
+
+    <!-- 分页查询所有借阅记录（管理员，关联用户名和图书名） -->
+    <select id="selectAllPage" resultMap="BorrowVOMap">
+        SELECT br.*,
+               u.`real_name` AS `user_name`,
+               b.`title`     AS `book_title`,
+               b.`isbn`      AS `book_isbn`
+        FROM `borrow_record` br
+        LEFT JOIN `user` u ON br.`user_id` = u.`id`
+        LEFT JOIN `book` b ON br.`book_id` = b.`id`
+        <where>
+            <if test="status != null">
+                AND br.`status` = #{status}
+            </if>
+        </where>
+        ORDER BY br.`borrow_time` DESC
+        LIMIT #{offset}, #{size}
+    </select>
+
+    <!-- 统计借阅记录总数 -->
+    <select id="countAll" resultType="java.lang.Long">
+        SELECT COUNT(*) FROM `borrow_record`
+        <where>
+            <if test="status != null">
+                AND `status` = #{status}
+            </if>
+        </where>
+    </select>
+
+    <!-- 更新单条记录状态 -->
+    <update id="updateStatus">
+        UPDATE `borrow_record` SET `status` = #{status} WHERE `id` = #{id}
+    </update>
+
+    <!-- 统计待审批归还数量 -->
+    <select id="countPending" resultType="java.lang.Integer">
+        SELECT COUNT(*) FROM `borrow_record` WHERE `status` = 3
+    </select>
+
+    <!-- 更新逾期状态：将超过应还时间且仍为"借阅中"的记录标记为"已逾期" -->
+    <update id="updateOverdueStatus">
+        UPDATE `borrow_record`
+        SET `status` = 2
+        WHERE `status` = 0 AND `due_time` &lt; NOW()
+    </update>
+
+    <!-- 热门图书排行（按借阅总次数降序，关联图书信息和分类名） -->
+    <resultMap id="PopularBookVOMap" type="com.library.vo.BookVO">
+        <id     property="id"                column="id"/>
+        <result property="isbn"              column="isbn"/>
+        <result property="title"             column="title"/>
+        <result property="author"            column="author"/>
+        <result property="publisher"         column="publisher"/>
+        <result property="categoryId"        column="category_id"/>
+        <result property="categoryName"      column="category_name"/>
+        <result property="description"       column="description"/>
+        <result property="coverUrl"          column="cover_url"/>
+        <result property="totalQuantity"     column="total_quantity"/>
+        <result property="availableQuantity" column="available_quantity"/>
+        <result property="createTime"        column="create_time"/>
+        <result property="borrowCount"       column="borrow_count"/>
+    </resultMap>
+
+    <select id="selectPopularBooks" resultMap="PopularBookVOMap">
+        SELECT b.*, c.`name` AS `category_name`, COUNT(br.`id`) AS `borrow_count`
+        FROM `borrow_record` br
+        INNER JOIN `book` b ON br.`book_id` = b.`id`
+        LEFT JOIN `category` c ON b.`category_id` = c.`id`
+        GROUP BY b.`id`
+        ORDER BY `borrow_count` DESC
+        LIMIT #{limit}
+    </select>
+
+</mapper>

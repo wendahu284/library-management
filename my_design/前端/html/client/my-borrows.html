@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>我的借阅 - 智慧书阁</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
+    <link href="/css/app.css" rel="stylesheet">
+</head>
+<body>
+<div class="client-redirect-banner">📢 此页面已升级，<a href="/student/my-borrows">点击前往新版</a></div>
+<nav class="navbar navbar-dark bg-primary"><div class="container">
+    <a class="navbar-brand fw-bold" href="/"><i class="bi bi-book-half"></i> 智慧书阁</a>
+    <div id="navRight"></div>
+</div></nav>
+<div class="container my-4">
+    <div id="msg"></div>
+    <h4><i class="bi bi-journal-text"></i> 我的借阅记录</h4>
+    <div class="table-responsive mt-3"><table class="table table-hover align-middle">
+        <thead class="table-primary"><tr><th>图书名称</th><th>借阅时间</th><th>应还时间</th><th>状态</th><th>操作</th></tr></thead>
+        <tbody id="tbody"></tbody>
+    </table></div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="/js/common.js"></script>
+<script>
+const user = JSON.parse(localStorage.getItem('user')||'null');
+if(!user) location.href='/login';
+
+fetch('/api/borrow/my').then(r=>r.json()).then(res=>{
+    if(res.code!==200) return;
+    let html = '';
+    if(!res.data||res.data.length===0){
+        html = '<tr><td colspan="5" class="text-center text-muted py-4">暂无借阅记录</td></tr>';
+    } else {
+        const statusMap = {0:'<span class="badge bg-warning text-dark">借阅中</span>',1:'<span class="badge bg-success">已归还</span>',2:'<span class="badge bg-danger">已逾期</span>'};
+        res.data.forEach(r=>{
+            html += `<tr>
+                <td>${r.bookTitle||'已删除'}</td>
+                <td>${r.borrowTime?.replace('T',' ')?.substring(0,16)||''}</td>
+                <td>${r.dueTime?.replace('T',' ')?.substring(0,16)||''}</td>
+                <td>${statusMap[r.status]||''}</td>
+                <td>${r.status===0||r.status===2?`<form onsubmit="returnBook(event,${r.id})"><button class="btn btn-outline-success btn-sm"><i class="bi bi-arrow-return-left"></i> 归还</button></form>`:
+                    r.status===1?`<small class="text-muted">${r.returnTime?.replace('T',' ')?.substring(0,10)||''} 已还</small>`:''}
+                </td></tr>`;
+        });
+    }
+    document.getElementById('tbody').innerHTML = html;
+    renderNav();
+});
+
+function returnBook(e,id){
+    e.preventDefault();
+    fetch('/api/borrow/return/'+id, {method:'POST'}).then(r=>r.json()).then(res=>{
+        showMsg(res.code===200?'success':'danger', res.message);
+        if(res.code===200) setTimeout(()=>location.reload(),1000);
+    });
+}
+function showMsg(type,text){ document.getElementById('msg').innerHTML=`<div class="alert alert-${type}">${text}</div>`; }
+</script>
+</body>
+</html>

@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>个人中心 - 智慧书阁</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
+    <link href="/css/app.css" rel="stylesheet">
+</head>
+<body>
+<!-- 封面横幅 -->
+<div class="profile-cover">
+    <div class="cover-deco"></div>
+    <div class="cover-deco"></div>
+    <div class="cover-deco"></div>
+</div>
+
+<div class="container">
+    <!-- 悬浮头像 -->
+    <div class="profile-avatar-wrap">
+        <div class="profile-avatar" id="avatarInit">?</div>
+    </div>
+
+    <!-- 用户信息 -->
+    <div class="profile-header">
+        <div class="profile-name" id="profileName"></div>
+        <div class="profile-username" id="profileUsername"></div>
+        <div class="profile-since" id="profileSince"></div>
+    </div>
+
+    <!-- 阅读数据 -->
+    <div class="profile-stats" id="statsRow">
+        <div class="pstat"><div class="pstat-number" style="color:#2563eb" id="statTotal">0</div><div class="pstat-label">累计借阅</div></div>
+        <div class="pstat"><div class="pstat-number" style="color:#d97706" id="statBorrowing">0</div><div class="pstat-label">当前借阅</div></div>
+        <div class="pstat"><div class="pstat-number" style="color:#dc2626" id="statOverdue">0</div><div class="pstat-label">逾期</div></div>
+        <div class="pstat"><div class="pstat-number" style="color:#16a34a" id="statDays">0</div><div class="pstat-label">阅读天数</div></div>
+    </div>
+
+    <div id="msg"></div>
+
+    <!-- 双列布局 -->
+    <div class="row g-4 mb-5">
+        <!-- 左：编辑资料 -->
+        <div class="col-md-6">
+            <div class="card"><div class="card-header"><i class="bi bi-person"></i> 编辑资料</div>
+                <div class="card-body">
+                    <form onsubmit="updateProfile(event)">
+                        <div class="input-underline-styled">
+                            <i class="bi bi-person input-icon"></i>
+                            <label>真实姓名</label>
+                            <input type="text" id="realName">
+                        </div>
+                        <div class="input-underline-styled">
+                            <i class="bi bi-telephone input-icon"></i>
+                            <label>电话</label>
+                            <input type="text" id="phone">
+                        </div>
+                        <div class="input-underline-styled">
+                            <i class="bi bi-envelope input-icon"></i>
+                            <label>邮箱</label>
+                            <input type="email" id="email">
+                        </div>
+                        <button class="btn btn-primary w-100" style="background:linear-gradient(135deg,#2563eb,#7c3aed);border:none;"><i class="bi bi-check-lg"></i> 保存修改</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+        <!-- 右：安全设置 -->
+        <div class="col-md-6">
+            <div class="card"><div class="card-header"><i class="bi bi-lock"></i> 安全设置</div>
+                <div class="card-body">
+                    <form onsubmit="changePassword(event)">
+                        <div class="input-underline-styled">
+                            <i class="bi bi-key input-icon"></i>
+                            <label>原密码 <span style="color:#ef4444;">*</span></label>
+                            <input type="password" id="oldPwd" required>
+                        </div>
+                        <div class="input-underline-styled">
+                            <i class="bi bi-lock input-icon"></i>
+                            <label>新密码 <span style="color:#ef4444;">*</span></label>
+                            <input type="password" id="newPwd" required minlength="6" oninput="checkPwdStrength(this.value)">
+                        </div>
+                        <div class="pwd-strength" id="pwdStrength" style="margin:-12px 0 16px 24px;">
+                            <div class="strength-bar"></div>
+                            <div class="strength-bar"></div>
+                            <div class="strength-bar"></div>
+                        </div>
+                        <div class="input-underline-styled">
+                            <i class="bi bi-lock-fill input-icon"></i>
+                            <label>确认新密码 <span style="color:#ef4444;">*</span></label>
+                            <input type="password" id="confirmPwd" required>
+                        </div>
+                        <button type="submit" class="btn-gradient-amber w-100"><i class="bi bi-key"></i> 修改密码</button>
+                        <div class="text-muted small mt-2 text-center">修改密码后需重新登录</div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <a href="#" class="logout-micro" onclick="studentLogout()"><i class="bi bi-box-arrow-right"></i> 退出登录</a>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="/js/app-common.js"></script>
+<script src="/js/student-common.js"></script>
+<script>
+(function(){
+    if (!initStudentPage('个人中心')) return;
+    loadProfile();
+})();
+
+function checkPwdStrength(pwd) {
+    var bars = document.querySelectorAll('#pwdStrength .strength-bar');
+    bars.forEach(function(b) { b.className = 'strength-bar'; });
+    if (!pwd.length) return;
+    var score = 0;
+    if (pwd.length >= 6) score++;
+    if (pwd.length >= 10) score++;
+    if (/[a-z]/.test(pwd) && /[A-Z]/.test(pwd)) score++;
+    if (/\d/.test(pwd)) score++;
+    if (/[^a-zA-Z0-9]/.test(pwd)) score++;
+    var level = score <= 1 ? { count: 1, cls: 'weak' } : (score <= 2 ? { count: 2, cls: 'medium' } : { count: 3, cls: 'strong' });
+    for (var i = 0; i < level.count; i++) { bars[i].classList.add('active', level.cls); }
+}
+
+async function loadProfile() {
+    var res = await api.get('/auth/me');
+    if (res.code !== 200) return;
+    var u = res.data;
+    document.getElementById('profileName').textContent = u.realName || u.username;
+    document.getElementById('profileUsername').textContent = '@' + u.username;
+    document.getElementById('profileSince').textContent = '注册时间: ' + formatDate(u.createTime);
+    document.getElementById('avatarInit').textContent = (u.realName || u.username).charAt(0);
+    document.getElementById('realName').value = u.realName || '';
+    document.getElementById('phone').value = u.phone || '';
+    document.getElementById('email').value = u.email || '';
+
+    // 统计
+    var borrowRes = await api.get('/borrow/my');
+    var borrows = borrowRes.data || [];
+    var total = borrows.length;
+    var borrowing = borrows.filter(function(b){ return b.status === 0; }).length;
+    var overdue = borrows.filter(function(b){ return b.status === 2; }).length;
+    // 阅读天数 = 去重借阅天数（用borrowTime的日期部分）
+    var days = new Set(borrows.map(function(b){ return (b.borrowTime || '').substring(0, 10); }).filter(Boolean)).size;
+
+    countUp(document.getElementById('statTotal'), total, 600);
+    countUp(document.getElementById('statBorrowing'), borrowing, 600);
+    countUp(document.getElementById('statOverdue'), overdue, 600);
+    countUp(document.getElementById('statDays'), days || 1, 600);
+}
+
+async function updateProfile(e) {
+    e.preventDefault();
+    var btn = e.target.querySelector('button[type="submit"]');
+    btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> 保存中...';
+    var res = await api.put('/auth/profile', {
+        realName: document.getElementById('realName').value.trim(),
+        phone: document.getElementById('phone').value.trim(),
+        email: document.getElementById('email').value.trim()
+    });
+    if (res.code === 200) {
+        showToast('success', '资料已更新');
+        loadProfile();
+    } else {
+        showToast('error', res.message || '保存失败');
+    }
+    btn.disabled = false; btn.innerHTML = '<i class="bi bi-check-lg"></i> 保存修改';
+}
+
+async function changePassword(e) {
+    e.preventDefault();
+    var np = document.getElementById('newPwd').value;
+    if (np !== document.getElementById('confirmPwd').value) { showToast('error', '两次新密码不一致'); return; }
+    var btn = e.target.querySelector('button[type="submit"]');
+    btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> 处理中...';
+    var res = await api.put('/auth/password', {
+        oldPassword: document.getElementById('oldPwd').value,
+        newPassword: np,
+        confirmPassword: document.getElementById('confirmPwd').value
+    });
+    if (res.code === 200) {
+        showToast('success', '密码修改成功，即将重新登录');
+        setTimeout(function() { auth.clearUser(); location.href = '/student/login.html'; }, 1500);
+    } else {
+        showToast('error', res.message);
+        btn.disabled = false; btn.innerHTML = '<i class="bi bi-key"></i> 修改密码';
+    }
+}
+</script>
+</body>
+</html>

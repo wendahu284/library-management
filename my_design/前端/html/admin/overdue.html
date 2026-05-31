@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>逾期管理 - 智慧书阁管理后台</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
+    <link href="/css/app.css" rel="stylesheet">
+</head>
+<body>
+<div class="admin-main" id="contentArea">
+    <div id="alertBox"></div>
+
+    <!-- 逾期统计 -->
+    <div class="row g-3 mb-4" id="overdueStats"></div>
+
+    <!-- 逾期列表 -->
+    <div class="filter-bar">
+        <select id="daysFilter" class="form-select" onchange="loadOverdue(1)"><option value="">全部逾期</option><option value="7">逾期7天以上</option><option value="14">逾期14天以上</option><option value="30">逾期30天以上</option></select>
+        <input type="text" id="keyword" class="form-control" placeholder="搜索借阅人或图书...">
+        <button class="btn btn-primary btn-sm" onclick="loadOverdue(1)"><i class="bi bi-search"></i> 查询</button>
+        <div class="filter-spacer"></div>
+        <button class="btn btn-danger btn-sm" onclick="notifyAll()"><i class="bi bi-bell"></i> 批量催还</button>
+    </div>
+
+    <div class="table-container">
+        <table class="data-table"><thead><tr><th>借阅人</th><th>图书</th><th>借阅时间</th><th>应还时间</th><th>逾期</th><th style="width:140px">操作</th></tr></thead><tbody id="tbody"></tbody></table>
+    </div>
+    <div id="pagination"></div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="/js/app-common.js"></script>
+<script src="/js/admin-common.js"></script>
+<script>
+var currentPage = 1;
+
+(function(){
+    if (!initAdminPage('逾期管理')) return;
+    loadOverdue(1);
+})();
+
+async function loadOverdue(page) {
+    currentPage = page;
+    var res = await api.get('/admin/borrows', { pageNum: page, status: 2 });
+    var allRecords = res.data && res.data.records || [];
+
+    var daysFilter = parseInt(document.getElementById('daysFilter').value) || 0;
+    var keyword = document.getElementById('keyword').value.toLowerCase();
+    var records = allRecords;
+    if (daysFilter) records = records.filter(function(r) { return (r.overdueDays||0) >= daysFilter; });
+    if (keyword) records = records.filter(function(r) { return (r.userName||'').toLowerCase().includes(keyword) || (r.bookTitle||'').toLowerCase().includes(keyword); });
+
+    var maxDays = records.length ? Math.max.apply(null, records.map(function(r){ return r.overdueDays||0; })) : 0;
+    var uniqueBooks = new Set(records.map(function(r){ return r.bookId; })).size;
+
+    document.getElementById('overdueStats').innerHTML =
+        '<div class="col-md-4"><div class="stat-card accent-danger"><div class="stat-icon"><i class="bi bi-exclamation-triangle"></i></div><div class="stat-value">' + records.length + '</div><div class="stat-label">当前逾期数量</div></div></div>' +
+        '<div class="col-md-4"><div class="stat-card accent-warning"><div class="stat-icon"><i class="bi bi-calendar-x"></i></div><div class="stat-value">' + maxDays + '</div><div class="stat-label">最长逾期天数</div></div></div>' +
+        '<div class="col-md-4"><div class="stat-card accent-blue"><div class="stat-icon"><i class="bi bi-book"></i></div><div class="stat-value">' + uniqueBooks + '</div><div class="stat-label">涉及图书数量</div></div></div>';
+
+    var html = '';
+    if (records.length) {
+        records.forEach(function(r) {
+            html += '<tr>' +
+                '<td><span class="fw-medium">' + (r.userName||'-') + '</span></td>' +
+                '<td>' + (r.bookTitle||'已删除') + '</td>' +
+                '<td>' + formatDate(r.borrowTime) + '</td>' +
+                '<td>' + formatDate(r.dueTime) + '</td>' +
+                '<td><span class="status-dot overdue">' + (r.overdueDays||0) + ' 天</span></td>' +
+                '<td><div class="row-actions">' +
+                    '<button class="btn btn-sm btn-success" onclick="confirmReturn(' + r.id + ')"><i class="bi bi-check-circle"></i> 归还</button> ' +
+                    '<button class="btn btn-sm btn-outline-danger" onclick="notifyUser(' + r.userId + ",'" + (r.userName||'').replace(/'/g,"\\'") + "')" + '"><i class="bi bi-bell"></i> 催还</button>' +
+                '</div></td></tr>';
+        });
+    } else {
+        html = '<tr><td colspan="6"><div class="table-empty"><div class="empty-svg"><svg width="80" height="80" viewBox="0 0 80 80" fill="none"><circle cx="40" cy="40" r="30" stroke="#22c55e" stroke-width="2" fill="#f0fdf4"/><path d="M30 40 L37 47 L50 33" stroke="#22c55e" stroke-width="2" fill="none"/></svg></div><div class="empty-title">暂无逾期记录</div><div class="empty-desc">所有图书都在正常借阅期内</div></div></td></tr>';
+    }
+    document.getElementById('tbody').innerHTML = html;
+    renderPagination('pagination', { records: records, total: records.length, pageNum: page, totalPages: Math.ceil(records.length / 15) || 1 }, 'loadOverdue');
+}
+
+async function confirmReturn(id) {
+    if (!confirm('确认归还？')) return;
+    var res = await api.put('/admin/borrows/' + id + '/return');
+    if (res.code === 200) { showToast('success', '归还确认成功'); loadOverdue(currentPage); }
+    else showToast('error', res.message);
+}
+
+function notifyUser(uid, name) {
+    showToast('info', '已向「' + name + '」发送催还通知（模拟）');
+}
+
+function notifyAll() {
+    var count = document.querySelectorAll('#tbody tr').length;
+    if (count === 0) { showToast('warning', '没有需要催还的记录'); return; }
+    if (!confirm('确定向 ' + count + ' 位读者发送催还通知吗？')) return;
+    showToast('success', '已向 ' + count + ' 位读者发送催还通知（模拟）');
+}
+</script>
+</body>
+</html>

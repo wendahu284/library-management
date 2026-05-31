@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>读者登录 - 智慧书阁</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
+    <link href="/css/app.css" rel="stylesheet">
+</head>
+<body>
+<div class="login-page">
+    <div class="login-shape login-shape-1"></div>
+    <div class="login-shape login-shape-2"></div>
+    <div class="login-shape login-shape-3"></div>
+    <div class="login-shape login-shape-4"></div>
+    <div class="login-shape login-shape-5"></div>
+    <div class="login-shape login-shape-6"></div>
+    <div class="login-shape login-shape-7"></div>
+    <div class="login-shape login-shape-8"></div>
+
+    <div class="login-glass">
+        <div class="glass-header">
+            <div class="glass-logo"><i class="bi bi-book-half"></i></div>
+            <h1>智慧书阁</h1>
+            <p class="tagline">知识的海洋，触手可及</p>
+        </div>
+
+        <div id="msg"></div>
+
+        <form onsubmit="handleLogin(event)">
+            <div class="glass-form-group">
+                <label>用户名</label>
+                <div class="glass-input-wrap">
+                    <input type="text" id="username" placeholder="请输入用户名" required autofocus>
+                    <div class="input-underline"></div>
+                </div>
+            </div>
+            <div class="glass-form-group">
+                <label>密码</label>
+                <div class="glass-input-wrap">
+                    <input type="password" id="password" placeholder="请输入密码" required>
+                    <div class="input-underline"></div>
+                    <button type="button" class="glass-pwd-toggle" onclick="togglePwd()" tabindex="-1"><i class="bi bi-eye" id="pwdIcon"></i></button>
+                </div>
+            </div>
+            <div class="glass-submit">
+                <button type="submit" class="btn-rainbow" id="loginBtn">
+                    <i class="bi bi-box-arrow-in-right"></i> 登录
+                </button>
+            </div>
+            <div class="glass-footer">
+                <a href="/student/register.html">还没有账号？立即注册</a>
+                <span class="divider">|</span>
+                <a href="/admin/login.html"><i class="bi bi-shield-lock"></i> 管理员入口</a>
+            </div>
+        </form>
+    </div>
+
+    <div class="login-footer">&copy; 2026 智慧书阁 v2.0 | 用知识照亮未来</div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="/js/app-common.js"></script>
+<script>
+(async function(){
+    var user = auth.getUser();
+    if (user && user.role === 0 && await auth.verify()) { window.location.href = '/student/'; return; }
+    auth.clearUser();
+})();
+
+function togglePwd() {
+    var pwd = document.getElementById('password');
+    var icon = document.getElementById('pwdIcon');
+    pwd.type = pwd.type === 'password' ? 'text' : 'password';
+    icon.className = pwd.type === 'password' ? 'bi bi-eye' : 'bi bi-eye-slash';
+}
+
+async function handleLogin(e) {
+    e.preventDefault();
+    var username = document.getElementById('username').value.trim();
+    var password = document.getElementById('password').value;
+    if (!username || !password) { showAlert('msg', 'warning', '请填写用户名和密码'); return; }
+
+    var btn = document.getElementById('loginBtn');
+    btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> 登录中...';
+
+    var res = await api.post('/auth/login', { username: username, password: password, loginType: 'reader' });
+    if (res.code === 200) {
+        auth.setUser(res.data);
+        showAlert('msg', 'success', '登录成功，正在跳转...');
+        setTimeout(function(){ window.location.href = '/student/'; }, 600);
+    } else {
+        showAlert('msg', 'danger', res.message || '登录失败');
+        btn.disabled = false; btn.innerHTML = '<i class="bi bi-box-arrow-in-right"></i> 登录';
+    }
+}
+</script>
+</body>
+</html>

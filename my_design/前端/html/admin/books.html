@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>图书管理 - 智慧书阁管理后台</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
+    <link href="/css/app.css" rel="stylesheet">
+</head>
+<body>
+<div class="admin-main" id="contentArea">
+    <div id="alertBox"></div>
+
+    <!-- 筛选栏 -->
+    <div class="filter-bar">
+        <input type="text" id="keyword" class="form-control" placeholder="搜索书名、作者、ISBN...">
+        <select id="categoryFilter" class="form-select"><option value="">全部分类</option></select>
+        <button class="btn btn-primary btn-sm" onclick="loadBooks(1)"><i class="bi bi-search"></i> 搜索</button>
+        <div class="filter-spacer"></div>
+        <button class="btn btn-success btn-sm" onclick="showBookModal()"><i class="bi bi-plus-circle"></i> 添加图书</button>
+        <button class="btn btn-outline-primary btn-sm" onclick="exportBooks()"><i class="bi bi-download"></i> 导出</button>
+    </div>
+
+    <!-- 图书表格 -->
+    <div class="table-container">
+        <table class="data-table">
+            <thead><tr><th style="width:50px">封面</th><th>书名</th><th>作者</th><th>ISBN</th><th>分类</th><th>库存</th><th style="width:120px">操作</th></tr></thead>
+            <tbody id="tbody"></tbody>
+        </table>
+    </div>
+    <div id="pagination"></div>
+</div>
+
+<!-- 图书表单弹窗 -->
+<div class="modal fade" id="bookModal" tabindex="-1" data-bs-backdrop="static">
+    <div class="modal-dialog modal-lg"><div class="modal-content">
+        <div class="modal-header"><h5 class="modal-title" id="bookModalTitle">添加图书</h5><button class="btn-close" data-bs-dismiss="modal"></button></div>
+        <div class="modal-body" id="bookModalBody"></div>
+    </div></div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="/js/app-common.js"></script>
+<script src="/js/admin-common.js"></script>
+<script>
+var bookModal, currentPage = 1;
+
+(async function(){
+    if (!await initAdminPage('图书管理')) return;
+    bookModal = new bootstrap.Modal(document.getElementById('bookModal'));
+    loadCategories();
+    loadBooks(1);
+})();
+
+async function loadCategories() {
+    var res = await api.get('/admin/categories');
+    if (res.data) res.data.forEach(function(c) {
+        document.getElementById('categoryFilter').innerHTML += '<option value="' + c.id + '">' + c.name + '</option>';
+    });
+}
+
+function getCoverThumbHtml(book) {
+    var url = getCoverUrl(book, 'S');
+    if (url) return '<img src="' + url + '" class="book-cover-thumb" alt="" onerror="this.outerHTML=\'<span class=\\\'book-cover-thumb-fallback\\\'>' + (book.title ? book.title.charAt(0) : '?') + '</span>\'">';
+    return '<span class="book-cover-thumb-fallback">' + (book.title ? book.title.charAt(0) : '?') + '</span>';
+}
+
+async function loadBooks(page) {
+    currentPage = page;
+    var params = { pageNum: page, keyword: document.getElementById('keyword').value, categoryId: document.getElementById('categoryFilter').value || undefined };
+    var res = await api.get('/books', params);
+    var html = '';
+    if (res.data && res.data.records && res.data.records.length) {
+        res.data.records.forEach(function(b) {
+            html += '<tr>' +
+                '<td>' + getCoverThumbHtml(b) + '</td>' +
+                '<td><a href="#" onclick="showBookDetail(' + b.id + ');return false" class="fw-medium">' + b.title + '</a></td>' +
+                '<td>' + (b.author || '-') + '</td>' +
+                '<td class="text-muted" style="font-size:.8rem">' + (b.isbn || '-') + '</td>' +
+                '<td>' + (b.categoryName ? '<span class="badge badge-info">' + b.categoryName + '</span>' : '-') + '</td>' +
+                '<td><span class="badge badge-success">' + (b.availableQuantity || 0) + '</span> / ' + (b.totalQuantity || 0) + '</td>' +
+                '<td><div class="row-actions">' +
+                    '<button class="btn btn-sm btn-outline-primary" onclick="showBookModal(' + b.id + ')"><i class="bi bi-pencil"></i></button> ' +
+                    '<button class="btn btn-sm btn-outline-danger" onclick="deleteBook(' + b.id + ",'" + b.title.replace(/'/g,"\\'") + "')" + '"><i class="bi bi-trash"></i></button>' +
+                '</div></td></tr>';
+        });
+    } else {
+        html = '<tr><td colspan="7"><div class="table-empty"><div class="empty-svg"><svg width="80" height="80" viewBox="0 0 80 80" fill="none"><rect x="15" y="10" width="50" height="60" rx="4" stroke="#d0d5dd" stroke-width="2" fill="#f8f9fa"/><line x1="25" y1="28" x2="55" y2="28" stroke="#e5e7eb" stroke-width="2"/><line x1="25" y1="38" x2="50" y2="38" stroke="#e5e7eb" stroke-width="2"/><line x1="25" y1="48" x2="45" y2="48" stroke="#e5e7eb" stroke-width="2"/></svg></div><div class="empty-title">暂无图书</div><div class="empty-desc">还没有添加任何图书，开始充实馆藏吧</div><button class="btn btn-primary btn-sm" onclick="showBookModal()"><i class="bi bi-plus-circle"></i> 添加第一本图书</button></div></td></tr>';
+    }
+    document.getElementById('tbody').innerHTML = html;
+    renderPagination('pagination', res.data, 'loadBooks');
+}
+
+async function showBookModal(id) {
+    document.getElementById('bookModalTitle').textContent = id ? '编辑图书' : '添加图书';
+    var catsRes = await api.get('/admin/categories');
+    var catOpts = '<option value="">选择分类</option>';
+    if (catsRes.data) catsRes.data.forEach(function(c) { catOpts += '<option value="' + c.id + '">' + c.name + '</option>'; });
+
+    var book = { title:'', isbn:'', author:'', publisher:'', categoryId:'', totalQuantity:1, availableQuantity:1, description:'', coverUrl:'' };
+    if (id) {
+        var res = await api.get('/books/' + id);
+        if (res.data) book = res.data;
+    }
+
+    document.getElementById('bookModalBody').innerHTML =
+        '<input type="hidden" id="editBookId" value="' + (id||'') + '">' +
+        '<div class="row g-3">' +
+            '<div class="col-md-6"><label class="form-label">书名 <span class="required">*</span></label><input type="text" id="fTitle" class="form-control" value="' + (book.title||'') + '" required></div>' +
+            '<div class="col-md-6"><label class="form-label">ISBN</label><input type="text" id="fIsbn" class="form-control" value="' + (book.isbn||'') + '"></div>' +
+            '<div class="col-md-4"><label class="form-label">作者</label><input type="text" id="fAuthor" class="form-control" value="' + (book.author||'') + '"></div>' +
+            '<div class="col-md-4"><label class="form-label">出版社</label><input type="text" id="fPublisher" class="form-control" value="' + (book.publisher||'') + '"></div>' +
+            '<div class="col-md-4"><label class="form-label">分类</label><select id="fCategoryId" class="form-select">' + catOpts + '</select></div>' +
+            '<div class="col-md-6"><label class="form-label">总数量</label><input type="number" id="fTotalQty" class="form-control" value="' + (book.totalQuantity||1) + '" min="0"></div>' +
+            '<div class="col-md-6"><label class="form-label">可借数量</label><input type="number" id="fAvailQty" class="form-control" value="' + (book.availableQuantity||1) + '" min="0"></div>' +
+            '<div class="col-12"><label class="form-label">简介</label><textarea id="fDesc" class="form-control" rows="3">' + (book.description||'') + '</textarea></div>' +
+            '<div class="col-md-8"><label class="form-label">封面URL</label><input type="text" id="fCoverUrl" class="form-control" value="' + (book.coverUrl||'') + '" placeholder="留空自动通过ISBN获取"></div>' +
+            '<div class="col-md-4"><label class="form-label">预览</label><div id="coverPreview" class="border rounded d-flex align-items-center justify-content-center" style="height:80px;background:#f8f9fa;">' + (id ? getCoverHtml(book,'medium') : '<small class="text-muted">封面预览</small>') + '</div></div>' +
+        '</div>';
+
+    if (id) { document.getElementById('fCategoryId').value = book.categoryId || ''; }
+    bookModal.show();
+}
+
+async function saveBook() {
+    var id = document.getElementById('editBookId').value;
+    var data = {
+        title: document.getElementById('fTitle').value.trim(),
+        isbn: document.getElementById('fIsbn').value.trim() || null,
+        author: document.getElementById('fAuthor').value.trim() || null,
+        publisher: document.getElementById('fPublisher').value.trim() || null,
+        categoryId: parseInt(document.getElementById('fCategoryId').value) || null,
+        totalQuantity: parseInt(document.getElementById('fTotalQty').value) || 1,
+        availableQuantity: parseInt(document.getElementById('fAvailQty').value) || 1,
+        description: document.getElementById('fDesc').value.trim() || null,
+        coverUrl: document.getElementById('fCoverUrl').value.trim() || null
+    };
+
+    var res = id ? await api.put('/admin/books/' + id, data) : await api.post('/admin/books', data);
+    if (res.code === 200) {
+        showToast('success', id ? '图书更新成功' : '图书添加成功');
+        bookModal.hide();
+        loadBooks(currentPage);
+    } else {
+        showAlert('alertBox', 'danger', res.message);
+    }
+}
+
+async function deleteBook(id, title) {
+    if (!confirm('确定删除图书「' + title + '」？此操作不可恢复。')) return;
+    var res = await api.del('/admin/books/' + id);
+    if (res.code === 200) { showToast('success', '删除成功'); loadBooks(currentPage); }
+    else showToast('error', res.message);
+}
+
+async function showBookDetail(id) {
+    var res = await api.get('/books/' + id);
+    if (res.code !== 200) return;
+    var b = res.data;
+    document.getElementById('bookModalTitle').textContent = '图书详情';
+    document.getElementById('bookModalBody').innerHTML =
+        '<div class="row"><div class="col-md-4">' + getCoverHtml(b, 'large') + '</div>' +
+        '<div class="col-md-8"><h4>' + b.title + '</h4><hr>' +
+        '<p><b>作者：</b>' + (b.author||'暂无') + ' | <b>出版社：</b>' + (b.publisher||'暂无') + '</p>' +
+        '<p><b>ISBN：</b>' + (b.isbn||'暂无') + ' | <b>分类：</b>' + (b.categoryName||'未分类') + '</p>' +
+        '<p><b>库存：</b><span class="badge badge-success">可借 ' + (b.availableQuantity||0) + '</span> / 共 ' + (b.totalQuantity||0) + '</p>' +
+        '<p class="text-muted">' + (b.description||'暂无简介') + '</p></div></div>';
+    bookModal.show();
+}
+
+function exportBooks() {
+    var rows = [];
+    document.querySelectorAll('#tbody tr').forEach(function(tr) {
+        var cells = tr.querySelectorAll('td');
+        if (cells.length >= 7) {
+            rows.push([cells[1].textContent, cells[2].textContent, cells[3].textContent, cells[4].textContent.replace(/\s/g,''), cells[5].textContent.replace(/\s/g,'')]);
+        }
+    });
+    if (!rows.length) { showToast('warning', '没有数据可导出'); return; }
+    downloadCSV('图书列表.csv', ['ID','书名','作者','ISBN','分类','库存'], rows);
+    showToast('success', '导出成功');
+}
+</script>
+</body>
+</html>

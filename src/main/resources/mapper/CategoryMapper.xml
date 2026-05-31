@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.library.mapper.CategoryMapper">
+
+    <resultMap id="BaseResultMap" type="com.library.entity.Category">
+        <id     property="id"          column="id"/>
+        <result property="name"        column="name"/>
+        <result property="description" column="description"/>
+        <result property="createTime"  column="create_time"/>
+        <result property="updateTime"  column="update_time"/>
+    </resultMap>
+
+    <!-- 查询全部分类 -->
+    <select id="selectAll" resultMap="BaseResultMap">
+        SELECT * FROM `category` ORDER BY `id` ASC
+    </select>
+
+    <!-- 根据ID查询 -->
+    <select id="selectById" resultMap="BaseResultMap">
+        SELECT * FROM `category` WHERE `id` = #{id}
+    </select>
+
+    <!-- 根据名称查询 -->
+    <select id="selectByName" resultMap="BaseResultMap">
+        SELECT * FROM `category` WHERE `name` = #{name}
+    </select>
+
+    <!-- 插入分类 -->
+    <insert id="insert" parameterType="com.library.entity.Category" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO `category` (`name`, `description`)
+        VALUES (#{name}, #{description})
+    </insert>
+
+    <!-- 更新分类 -->
+    <update id="updateById" parameterType="com.library.entity.Category">
+        UPDATE `category`
+        <set>
+            <if test="name != null">`name` = #{name},</if>
+            <if test="description != null">`description` = #{description},</if>
+        </set>
+        WHERE `id` = #{id}
+    </update>
+
+    <!-- 删除分类 -->
+    <delete id="deleteById">
+        DELETE FROM `category` WHERE `id` = #{id}
+    </delete>
+
+</mapper>

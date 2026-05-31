@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>借阅管理 - 智慧书阁管理后台</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
+    <link href="/css/app.css" rel="stylesheet">
+</head>
+<body>
+<div class="admin-main" id="contentArea">
+    <div id="alertBox"></div>
+    <div class="filter-bar">
+        <select id="statusFilter" class="form-select" onchange="loadBorrows(1)"><option value="">全部状态</option><option value="0">借阅中</option><option value="2">已逾期</option><option value="3">待审批</option><option value="1">已归还</option></select>
+        <input type="text" id="keyword" class="form-control" placeholder="搜索借阅人或图书名称...">
+        <button class="btn btn-primary btn-sm" onclick="loadBorrows(1)"><i class="bi bi-search"></i> 搜索</button>
+        <div class="filter-spacer"></div>
+        <button class="btn btn-success btn-sm" onclick="showOfflineBorrow()"><i class="bi bi-journal-plus"></i> 线下借阅</button>
+    </div>
+    <div class="table-container">
+        <table class="data-table"><thead><tr><th>借阅人</th><th>图书</th><th>借阅时间</th><th>应还时间</th><th>状态</th><th style="width:160px">操作</th></tr></thead><tbody id="tbody"></tbody></table>
+    </div>
+    <div id="pagination"></div>
+</div>
+
+<!-- 线下借阅弹窗 -->
+<div class="modal fade" id="offlineModal" tabindex="-1">
+    <div class="modal-dialog"><div class="modal-content">
+        <div class="modal-header"><h5 class="modal-title">线下借阅登记</h5><button class="btn-close" data-bs-dismiss="modal"></button></div>
+        <div class="modal-body"><div id="offlineMsg"></div>
+            <div class="mb-3"><label class="form-label">选择读者</label><div class="input-group"><input type="text" id="readerSearch" class="form-control" placeholder="搜索用户名..." oninput="searchReaders()"><button class="btn btn-outline-secondary" onclick="searchReaders()"><i class="bi bi-search"></i></button></div><div id="readerResults" class="list-group mt-1" style="max-height:150px;overflow-y:auto;"></div></div>
+            <div class="mb-3"><label class="form-label">选择图书</label><div class="input-group"><input type="text" id="bookSearch" class="form-control" placeholder="搜索图书..." oninput="searchBooksForBorrow()"><button class="btn btn-outline-secondary" onclick="searchBooksForBorrow()"><i class="bi bi-search"></i></button></div><div id="bookResults" class="list-group mt-1" style="max-height:150px;overflow-y:auto;"></div></div>
+            <input type="hidden" id="selectedReaderId"><input type="hidden" id="selectedBookId">
+            <div id="selectedInfo" class="small text-muted mb-2"></div>
+            <button class="btn btn-primary w-100" onclick="confirmOfflineBorrow()"><i class="bi bi-check-lg"></i> 确认借阅</button>
+        </div>
+    </div></div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="/js/app-common.js"></script>
+<script src="/js/admin-common.js"></script>
+<script>
+var offlineModal, currentPage = 1;
+var STATUS_DOT = {0: 'borrowing', 1: 'active', 2: 'overdue', 3: 'pending'};
+var STATUS_LABEL = {0: '借阅中', 1: '已归还', 2: '已逾期', 3: '待审批'};
+
+(function(){
+    if (!initAdminPage('借阅管理')) return;
+    offlineModal = new bootstrap.Modal(document.getElementById('offlineModal'));
+    loadBorrows(1);
+})();
+
+async function loadBorrows(page) {
+    currentPage = page;
+    var params = { pageNum: page, status: document.getElementById('statusFilter').value || undefined };
+    var res = await api.get('/admin/borrows', params);
+    var html = '';
+    if (res.data && res.data.records && res.data.records.length) {
+        res.data.records.forEach(function(r) {
+            var isPending = r.status === 3;
+            var canReturn = r.status === 0 || r.status === 2;
+            var dotClass = STATUS_DOT[r.status] || '';
+            var overdueInfo = r.overdueDays > 0 ? ' <span class="text-danger">(逾期' + r.overdueDays + '天)</span>' : '';
+            var actionHtml;
+            if (isPending) {
+                actionHtml = '<button class="btn btn-sm btn-success" onclick="approveReturn(' + r.id + ')"><i class="bi bi-check-lg"></i> 批准</button> ' +
+                    '<button class="btn btn-sm btn-outline-danger" onclick="rejectReturn(' + r.id + ')"><i class="bi bi-x-lg"></i> 拒绝</button>';
+            } else if (canReturn) {
+                actionHtml = '<button class="btn btn-sm btn-success" onclick="confirmReturn(' + r.id + ')"><i class="bi bi-check-circle"></i> 确认归还</button>';
+            } else {
+                actionHtml = '<small class="text-muted">已完成</small>';
+            }
+            html += '<tr>' +
+                '<td><span class="fw-medium">' + (r.userName || '-') + '</span></td>' +
+                '<td>' + (r.bookTitle || '已删除') + '<br><small class="text-muted">' + (r.bookIsbn || '') + '</small></td>' +
+                '<td>' + formatDate(r.borrowTime) + '</td>' +
+                '<td>' + formatDate(r.dueTime) + overdueInfo + '</td>' +
+                '<td><span class="status-dot ' + dotClass + '">' + (STATUS_LABEL[r.status] || '-') + '</span></td>' +
+                '<td><div class="row-actions">' + actionHtml + '</div></td></tr>';
+        });
+    } else {
+        html = '<tr><td colspan="6"><div class="table-empty"><div class="empty-svg"><svg width="80" height="80" viewBox="0 0 80 80" fill="none"><circle cx="40" cy="40" r="30" stroke="#d0d5dd" stroke-width="2" fill="#f8f9fa"/><path d="M30 45 L40 35 L50 45" stroke="#e5e7eb" stroke-width="2" fill="none"/><line x1="40" y1="40" x2="40" y2="30" stroke="#e5e7eb" stroke-width="2"/></svg></div><div class="empty-title">暂无借阅记录</div><div class="empty-desc">还没有任何借阅活动</div></div></td></tr>';
+    }
+    document.getElementById('tbody').innerHTML = html;
+    renderPagination('pagination', res.data, 'loadBorrows');
+}
+
+async function confirmReturn(id) {
+    if (!confirm('确认该图书已归还？')) return;
+    var res = await api.put('/admin/borrows/' + id + '/return');
+    if (res.code === 200) { showToast('success', '归还确认成功'); loadBorrows(currentPage); }
+    else showToast('error', res.message);
+}
+
+async function approveReturn(id) {
+    if (!confirm('确认批准此归还申请？')) return;
+    var res = await api.put('/admin/borrows/' + id + '/approve');
+    if (res.code === 200) { showToast('success', '归还已批准'); loadBorrows(currentPage); }
+    else showToast('error', res.message);
+}
+
+async function rejectReturn(id) {
+    if (!confirm('确认拒绝此归还申请？')) return;
+    var res = await api.put('/admin/borrows/' + id + '/reject');
+    if (res.code === 200) { showToast('success', '归还已拒绝'); loadBorrows(currentPage); }
+    else showToast('error', res.message);
+}
+
+function showOfflineBorrow() { offlineModal.show(); }
+
+async function searchReaders() {
+    var q = document.getElementById('readerSearch').value.trim();
+    if (!q) { document.getElementById('readerResults').innerHTML = ''; return; }
+    var res = await api.get('/admin/users', { pageSize: 5 });
+    var filtered = (res.data && res.data.records || []).filter(function(u) { return u.username.includes(q) || (u.realName||'').includes(q); });
+    document.getElementById('readerResults').innerHTML = filtered.map(function(u) {
+        return '<a href="#" class="list-group-item list-group-item-action py-1" onclick="selectReader(' + u.id + ",'" + u.username + "');return false" + '">' + u.username + ' (' + (u.realName||'未填') + ')</a>';
+    }).join('');
+}
+
+function selectReader(id, name) {
+    document.getElementById('selectedReaderId').value = id;
+    document.getElementById('readerSearch').value = name;
+    document.getElementById('readerResults').innerHTML = '';
+    updateOfflineInfo();
+}
+
+async function searchBooksForBorrow() {
+    var q = document.getElementById('bookSearch').value.trim();
+    if (!q) { document.getElementById('bookResults').innerHTML = ''; return; }
+    var res = await api.get('/books', { keyword: q, pageSize: 5 });
+    document.getElementById('bookResults').innerHTML = ((res.data && res.data.records) || []).map(function(b) {
+        return '<a href="#" class="list-group-item list-group-item-action py-1" onclick="selectBook(' + b.id + ",'" + b.title.replace(/'/g,"\\'") + "');return false" + '">' + b.title + ' (可借:' + b.availableQuantity + ')</a>';
+    }).join('');
+}
+
+function selectBook(id, title) {
+    document.getElementById('selectedBookId').value = id;
+    document.getElementById('bookSearch').value = title;
+    document.getElementById('bookResults').innerHTML = '';
+    updateOfflineInfo();
+}
+
+function updateOfflineInfo() {
+    var rid = document.getElementById('selectedReaderId').value;
+    var bid = document.getElementById('selectedBookId').value;
+    document.getElementById('selectedInfo').innerHTML = rid && bid ? '已选择读者ID: ' + rid + '，图书ID: ' + bid : '';
+}
+
+async function confirmOfflineBorrow() {
+    var rid = document.getElementById('selectedReaderId').value;
+    var bid = document.getElementById('selectedBookId').value;
+    if (!rid || !bid) { showAlert('offlineMsg', 'warning', '请选择读者和图书'); return; }
+    var res = await api.post('/borrow/' + bid);
+    if (res.code === 200) { showToast('success', '借阅登记成功'); offlineModal.hide(); loadBorrows(currentPage); }
+    else showAlert('offlineMsg', 'danger', res.message);
+}
+</script>
+</body>
+</html>

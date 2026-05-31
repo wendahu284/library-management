@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.library.mapper.OperationLogMapper">
+
+    <resultMap id="BaseResultMap" type="com.library.entity.OperationLog">
+        <id property="id" column="id"/>
+        <result property="userId" column="user_id"/>
+        <result property="username" column="username"/>
+        <result property="operation" column="operation"/>
+        <result property="target" column="target"/>
+        <result property="detail" column="detail"/>
+        <result property="ip" column="ip"/>
+        <result property="createTime" column="create_time"/>
+    </resultMap>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO operation_log (user_id, username, operation, target, detail, ip)
+        VALUES (#{userId}, #{username}, #{operation}, #{target}, #{detail}, #{ip})
+    </insert>
+
+    <select id="selectPage" resultMap="BaseResultMap">
+        SELECT * FROM operation_log ORDER BY create_time DESC LIMIT #{offset}, #{size}
+    </select>
+
+    <select id="countAll" resultType="long">
+        SELECT COUNT(*) FROM operation_log
+    </select>
+
+</mapper>

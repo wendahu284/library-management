@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>图书检索 - 智慧书阁</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
+    <link href="/css/app.css" rel="stylesheet">
+</head>
+<body>
+<div class="container book-detail-page" style="padding-top:28px;">
+    <!-- 搜索卡片 -->
+    <div class="search-card">
+        <div class="row g-2 align-items-end">
+            <div class="col-md-6">
+                <div class="search-input-wrap">
+                    <i class="bi bi-search search-icon"></i>
+                    <input type="text" id="keyword" class="form-control" placeholder="搜索书名、作者或ISBN..." onkeydown="if(event.key==='Enter')searchBooks(1)">
+                    <button class="scan-btn" title="扫码搜索（开发中）"><i class="bi bi-upc-scan"></i></button>
+                </div>
+                <div class="hot-tags" id="hotTags" style="display:none;">
+                    <span class="hot-label">🔥 热门：</span>
+                    <span class="hot-tag" onclick="setKeyword('Java')">Java</span>
+                    <span class="hot-tag" onclick="setKeyword('红楼梦')">红楼梦</span>
+                    <span class="hot-tag" onclick="setKeyword('算法')">算法</span>
+                    <span class="hot-tag" onclick="setKeyword('Spring')">Spring</span>
+                    <span class="hot-tag" onclick="setKeyword('MySQL')">MySQL</span>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <select id="categoryFilter" class="category-pill w-100"><option value="">全部分类</option></select>
+            </div>
+            <div class="col-md-3 d-flex gap-2">
+                <button class="search-btn-gradient flex-grow-1" onclick="searchBooks(1)"><i class="bi bi-search"></i> 搜索</button>
+                <button class="btn btn-outline-danger" style="border-radius:20px;padding:6px 16px;height:40px;flex-shrink:0;" id="favBtn" onclick="toggleFavFilter()">
+                    <i class="bi bi-heart" id="favIcon"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 筛选信息 -->
+    <div id="filterInfo" class="mb-3"></div>
+
+    <!-- 骨架屏 -->
+    <div id="skeletonGrid" class="skeleton-grid">
+        <div class="skeleton-card"><div class="skel-cover"></div><div class="skel-line"></div><div class="skel-line"></div></div>
+        <div class="skeleton-card"><div class="skel-cover"></div><div class="skel-line"></div><div class="skel-line"></div></div>
+        <div class="skeleton-card"><div class="skel-cover"></div><div class="skel-line"></div><div class="skel-line"></div></div>
+        <div class="skeleton-card"><div class="skel-cover"></div><div class="skel-line"></div><div class="skel-line"></div></div>
+    </div>
+
+    <!-- 瀑布流网格 -->
+    <div class="waterfall-grid" id="bookGrid" style="display:none;"></div>
+
+    <!-- 空状态 -->
+    <div id="emptyState" style="display:none;"><div class="empty-emoji">
+        <div class="emoji-icon" id="emptyEmoji">📚</div>
+        <div class="empty-title" id="emptyTitle">未找到匹配的图书</div>
+        <div class="empty-desc" id="emptyDesc">试试其他关键词或分类筛选</div>
+    </div></div>
+
+    <!-- 加载更多 -->
+    <div class="load-more-wrap" id="loadMoreWrap" style="display:none;">
+        <button class="btn-load-more" onclick="loadMore()" id="loadMoreBtn"><i class="bi bi-arrow-down"></i> 加载更多</button>
+    </div>
+
+    <!-- 传统分页备选 -->
+    <div id="pagination" style="display:none;"></div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="/js/app-common.js"></script>
+<script src="/js/student-common.js"></script>
+<script>
+var showFavorites = false, currentPage = 1, totalPages = 1;
+var allRecords = [];
+var favorites = storage.get('student_favorites', []);
+var catColors = {};
+
+(function(){
+    if (!initStudentPage('图书检索')) return;
+    loadCategories();
+    // 点击搜索框显示热门
+    document.getElementById('keyword').addEventListener('focus', function() {
+        if (!this.value) document.getElementById('hotTags').style.display = '';
+    });
+    document.getElementById('keyword').addEventListener('blur', function() {
+        setTimeout(function() { document.getElementById('hotTags').style.display = 'none'; }, 200);
+    });
+    searchBooks(1);
+})();
+
+function setKeyword(kw) {
+    document.getElementById('keyword').value = kw;
+    document.getElementById('hotTags').style.display = 'none';
+    searchBooks(1);
+}
+
+async function loadCategories() {
+    var res = await api.get('/admin/categories');
+    var colors = ['cat-blue','cat-pink','cat-orange','cat-green','cat-purple','cat-yellow','cat-teal','cat-red'];
+    if (res.data) res.data.forEach(function(c, i) {
+        document.getElementById('categoryFilter').innerHTML += '<option value="' + c.id + '">' + c.name + '</option>';
+        catColors[c.id] = colors[i % colors.length];
+    });
+}
+
+function getCatTagHtml(categoryId, name) {
+    var cls = catColors[categoryId] || 'cat-blue';
+    return '<span class="cat-tag ' + cls + '">' + (name || '未分类') + '</span>';
+}
+
+async function searchBooks(page) {
+    currentPage = page;
+    document.getElementById('skeletonGrid').style.display = '';
+    document.getElementById('bookGrid').style.display = 'none';
+    document.getElementById('emptyState').style.display = 'none';
+    document.getElementById('loadMoreWrap').style.display = 'none';
+    document.getElementById('pagination').style.display = 'none';
+
+    if (showFavorites && favorites.length) {
+        var results = await Promise.all(favorites.map(function(id) { return api.get('/books/' + id); }));
+        allRecords = results.filter(function(r) { return r.code === 200; }).map(function(r) { return r.data; });
+        var kw = document.getElementById('keyword').value.toLowerCase();
+        var cid = document.getElementById('categoryFilter').value;
+        if (kw) allRecords = allRecords.filter(function(b) { return (b.title||'').toLowerCase().includes(kw) || (b.author||'').toLowerCase().includes(kw) || (b.isbn||'').includes(kw); });
+        if (cid) allRecords = allRecords.filter(function(b) { return b.categoryId == cid; });
+        totalPages = 1;
+        renderBooks(allRecords);
+    } else {
+        var params = { pageNum: page, pageSize: 12, keyword: document.getElementById('keyword').value, categoryId: document.getElementById('categoryFilter').value || undefined };
+        var res = await api.get('/books', params);
+        allRecords = res.data && res.data.records || [];
+        totalPages = res.data && res.data.totalPages || 1;
+        renderBooks(allRecords);
+    }
+}
+
+function renderBooks(records) {
+    document.getElementById('skeletonGrid').style.display = 'none';
+    if (!records.length) {
+        document.getElementById('bookGrid').style.display = 'none';
+        document.getElementById('loadMoreWrap').style.display = 'none';
+        document.getElementById('emptyState').style.display = '';
+        document.getElementById('emptyEmoji').textContent = showFavorites ? '💔' : '📚';
+        document.getElementById('emptyTitle').textContent = showFavorites ? '暂无收藏图书' : '未找到匹配的图书';
+        document.getElementById('emptyDesc').textContent = showFavorites ? '去浏览图书添加收藏吧' : '试试其他关键词或分类筛选';
+        return;
+    }
+
+    document.getElementById('emptyState').style.display = 'none';
+    document.getElementById('bookGrid').style.display = '';
+    var html = '';
+    records.forEach(function(b) {
+        var isFav = favorites.includes(b.id);
+        var coverUrl = getCoverUrl(b, 'M');
+        var coverHtml = coverUrl
+            ? '<img src="' + coverUrl + '" alt="" onerror="this.outerHTML=\'<div style=\\\'height:320px;background:linear-gradient(135deg,#667eea,#764ba2);display:flex;align-items:center;justify-content:center;color:#fff;font-size:2rem;font-weight:700;\\\'>' + (b.title.charAt(0) || '?') + '</div>\'">'
+            : '<div style="height:320px;background:linear-gradient(135deg,#667eea,#764ba2);display:flex;align-items:center;justify-content:center;color:#fff;font-size:2rem;font-weight:700;">' + (b.title.charAt(0) || '?') + '</div>';
+        var catHtml = b.categoryName ? getCatTagHtml(b.categoryId, b.categoryName) : '';
+
+        html += '<div class="waterfall-item"><div class="book-card-netflix">' +
+            '<div class="netflix-cover" onclick="location.href=\'/student/book-detail?id=' + b.id + '\'">' + coverHtml +
+                '<div class="netflix-overlay"><div class="netflix-title">' + b.title + '</div><div class="netflix-author">' + (b.author || '佚名') + '</div></div>' +
+                '<div class="netflix-hover"><button class="view-btn" onclick="event.stopPropagation();location.href=\'/student/book-detail?id=' + b.id + '\'">查看详情</button></div>' +
+            '</div>' +
+            '<div style="padding:8px 14px 12px;display:flex;justify-content:space-between;align-items:center;">' +
+                '<div>' + catHtml + ' <span class="badge badge-success" style="font-size:.65rem">可借 ' + (b.availableQuantity || 0) + '</span></div>' +
+                '<button class="btn-favorite ' + (isFav ? 'active' : '') + '" onclick="event.stopPropagation();toggleFavorite(' + b.id + ',this)" title="' + (isFav ? '取消收藏' : '收藏') + '">' +
+                    '<i class="bi ' + (isFav ? 'bi-heart-fill' : 'bi-heart') + '"></i></button>' +
+            '</div></div></div>';
+    });
+    document.getElementById('bookGrid').innerHTML = html;
+
+    // 加载更多 vs 分页
+    if (currentPage < totalPages) {
+        document.getElementById('loadMoreWrap').style.display = '';
+    } else {
+        document.getElementById('loadMoreWrap').style.display = 'none';
+    }
+    document.getElementById('pagination').style.display = '';
+    renderPagination('pagination', { records: records, total: allRecords.length, pageNum: currentPage, totalPages: totalPages }, 'searchBooks');
+}
+
+function loadMore() {
+    var btn = document.getElementById('loadMoreBtn');
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> 加载中...';
+    btn.disabled = true;
+    currentPage++;
+    var params = { pageNum: currentPage, pageSize: 12, keyword: document.getElementById('keyword').value, categoryId: document.getElementById('categoryFilter').value || undefined };
+    api.get('/books', params).then(function(res) {
+        var newRecords = res.data && res.data.records || [];
+        allRecords = allRecords.concat(newRecords);
+        renderBooks(allRecords);
+        btn.innerHTML = '<i class="bi bi-arrow-down"></i> 加载更多';
+        btn.disabled = false;
+    });
+}
+
+function toggleFavorite(id, btn) {
+    var idx = favorites.indexOf(id);
+    if (idx >= 0) { favorites.splice(idx, 1); if (btn) { btn.classList.remove('active'); btn.querySelector('i').className = 'bi bi-heart'; } }
+    else { favorites.push(id); if (btn) { btn.classList.add('active'); btn.querySelector('i').className = 'bi bi-heart-fill'; btn.classList.add('just-liked'); setTimeout(function(){ btn.classList.remove('just-liked'); }, 300); } }
+    storage.set('student_favorites', favorites);
+    if (showFavorites) searchBooks(currentPage);
+}
+
+function toggleFavFilter() {
+    showFavorites = !showFavorites;
+    var btn = document.getElementById('favBtn');
+    var icon = document.getElementById('favIcon');
+    if (showFavorites) { btn.classList.add('btn-danger'); btn.classList.remove('btn-outline-danger'); icon.className = 'bi bi-heart-fill'; }
+    else { btn.classList.remove('btn-danger'); btn.classList.add('btn-outline-danger'); icon.className = 'bi bi-heart'; }
+    searchBooks(1);
+}
+</script>
+</body>
+</html>

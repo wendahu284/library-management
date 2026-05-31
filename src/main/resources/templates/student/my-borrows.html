@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>我的借阅 - 智慧书阁</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
+    <link href="/css/app.css" rel="stylesheet">
+</head>
+<body>
+<div class="container book-detail-page" style="padding-top:28px;">
+    <div id="msg"></div>
+    <h4 class="mb-4 fw-bold"><i class="bi bi-journal-text"></i> 我的借阅记录</h4>
+
+    <!-- SVG 进度环统计 -->
+    <div class="row g-3 mb-4" id="statsRings"></div>
+
+    <!-- 药丸筛选 -->
+    <div class="pill-filters" id="pillFilters"></div>
+
+    <!-- 骨架 -->
+    <div id="skeletonBorrows">
+        <div class="skeleton" style="height:80px;border-radius:10px;margin-bottom:12px;"></div>
+        <div class="skeleton" style="height:80px;border-radius:10px;margin-bottom:12px;"></div>
+        <div class="skeleton" style="height:80px;border-radius:10px;margin-bottom:12px;"></div>
+    </div>
+
+    <!-- 借阅卡片列表 -->
+    <div id="borrowList"></div>
+
+    <!-- 空状态 -->
+    <div id="emptyState" style="display:none;"><div class="empty-emoji">
+        <div class="emoji-icon" id="emptyEmoji">📖</div>
+        <div class="empty-title" id="emptyTitle">暂无借阅记录</div>
+        <div class="empty-desc" id="emptyDesc">去发现好书开始借阅吧</div>
+    </div></div>
+</div>
+
+<!-- 自定义确认弹窗 -->
+<div id="confirmOverlay" style="display:none;"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="/js/app-common.js"></script>
+<script src="/js/student-common.js"></script>
+<script>
+var allBorrows = [], currentFilter = '';
+
+(function(){
+    if (!initStudentPage('我的借阅')) return;
+    loadBorrows();
+})();
+
+async function loadBorrows() {
+    var res = await api.get('/borrow/my');
+    allBorrows = res.data || [];
+    document.getElementById('skeletonBorrows').style.display = 'none';
+    renderStats();
+    renderFilters();
+    renderBorrows();
+}
+
+function renderStats() {
+    var stats = [
+        { label: '借阅中', value: allBorrows.filter(function(b){ return b.status === 0; }).length, color: '#2563eb', max: allBorrows.length || 1 },
+        { label: '已逾期', value: allBorrows.filter(function(b){ return b.status === 2; }).length, color: '#dc2626', max: allBorrows.length || 1 },
+        { label: '待审批', value: allBorrows.filter(function(b){ return b.status === 3; }).length, color: '#d97706', max: allBorrows.length || 1 },
+        { label: '已归还', value: allBorrows.filter(function(b){ return b.status === 1; }).length, color: '#16a34a', max: allBorrows.length || 1 }
+    ];
+    var circumference = 2 * Math.PI * 30; // r=30
+    var html = '';
+    stats.forEach(function(s) {
+        var offset = circumference - (s.value / Math.max(s.max, 1)) * circumference;
+        html += '<div class="col-3"><div class="progress-ring-wrap"><div class="progress-ring">' +
+            '<svg width="80" height="80" viewBox="0 0 80 80"><circle class="ring-bg" cx="40" cy="40" r="30"/>' +
+            '<circle class="ring-fg" cx="40" cy="40" r="30" stroke="' + s.color + '" stroke-dasharray="' + circumference + '" stroke-dashoffset="' + circumference + '" data-target="' + offset + '"/></svg>' +
+            '<div class="ring-number" style="color:' + s.color + '">' + s.value + '</div></div>' +
+            '<div class="ring-label">' + s.label + '</div></div></div>';
+    });
+    document.getElementById('statsRings').innerHTML = html;
+    // 动画：延迟触发 dashoffset 过渡
+    setTimeout(function() {
+        document.querySelectorAll('.ring-fg').forEach(function(el) { var target = parseFloat(el.getAttribute('data-target')); if (!isNaN(target)) el.style.strokeDashoffset = target; });
+    }, 100);
+}
+
+function renderFilters() {
+    var counts = {
+        '': allBorrows.length,
+        '0': allBorrows.filter(function(b){ return b.status === 0; }).length,
+        '2': allBorrows.filter(function(b){ return b.status === 2; }).length,
+        '3': allBorrows.filter(function(b){ return b.status === 3; }).length,
+        '1': allBorrows.filter(function(b){ return b.status === 1; }).length
+    };
+    var labels = { '': '全部', '0': '借阅中', '2': '已逾期', '3': '待审批', '1': '已归还' };
+    var html = '';
+    Object.keys(labels).forEach(function(k) {
+        var active = k === currentFilter ? ' active' : '';
+        html += '<button class="pill-btn' + active + '" onclick="filterStatus(\'' + k + '\')">' + labels[k] + ' (' + (counts[k] || 0) + ')</button>';
+    });
+    document.getElementById('pillFilters').innerHTML = html;
+}
+
+function filterStatus(status) {
+    currentFilter = status;
+    renderFilters();
+    renderBorrows();
+}
+
+function renderBorrows() {
+    var data = currentFilter === '' ? allBorrows : allBorrows.filter(function(b) { return b.status === parseInt(currentFilter); });
+    var statusText = { 0: '借阅中', 1: '已归还', 2: '已逾期', 3: '待审批' };
+    var statusClass = { 0: 'status-borrowing', 1: 'status-returned', 2: 'status-overdue', 3: 'status-pending' };
+
+    if (!data.length) {
+        var emptyMap = {
+            '': { icon: '📖', title: '暂无借阅记录', desc: '去发现好书开始借阅吧' },
+            '0': { icon: '📚', title: '没有借阅中的图书', desc: '去借一本感兴趣的图书吧' },
+            '2': { icon: '🎉', title: '暂无逾期，继续保持！', desc: '你真是个按时还书的好读者' },
+            '3': { icon: '✅', title: '没有待审批的记录', desc: '所有归还申请都已处理' },
+            '1': { icon: '📕', title: '还没有已归还的记录', desc: '借阅并归还后这里会显示' }
+        };
+        var e = emptyMap[currentFilter] || emptyMap[''];
+        document.getElementById('borrowList').innerHTML = '';
+        document.getElementById('emptyState').style.display = '';
+        document.getElementById('emptyEmoji').textContent = e.icon;
+        document.getElementById('emptyTitle').textContent = e.title;
+        document.getElementById('emptyDesc').textContent = e.desc;
+        return;
+    }
+    document.getElementById('emptyState').style.display = 'none';
+
+    var html = '';
+    data.forEach(function(r) {
+        var isOverdue = r.status === 2;
+        var isPending = r.status === 3;
+        var canReturn = r.status === 0 || r.status === 2;
+        var cls = statusClass[r.status] || '';
+        var pulseCls = isOverdue ? ' overdue-pulse' : '';
+        var overdueInfo = r.overdueDays > 0 ? '<span class="text-danger"> (逾期' + r.overdueDays + '天)</span>' : '';
+
+        var thumbUrl = getCoverUrl(r, 'S');
+        var thumbHtml = thumbUrl
+            ? '<img src="' + thumbUrl + '" class="borrow-thumb" alt="" onerror="this.outerHTML=\'<div class=\\\'borrow-thumb-fallback\\\'>' + ((r.bookTitle||'?').charAt(0)) + '</div>\'">'
+            : '<div class="borrow-thumb-fallback">' + ((r.bookTitle||'?').charAt(0)) + '</div>';
+
+        var actionHtml;
+        if (isPending) {
+            actionHtml = '<span class="badge badge-warning status-tag"><i class="bi bi-hourglass-split"></i> 审批中</span>';
+        } else if (canReturn) {
+            actionHtml = '<button class="btn btn-sm btn-success" onclick="showConfirm(' + r.id + ',\'' + (r.bookTitle||'').replace(/'/g,"\\'") + '\')"><i class="bi bi-arrow-return-left"></i> 归还</button>';
+        } else {
+            actionHtml = '<span class="badge badge-success status-tag"><i class="bi bi-check-lg"></i> 已归还</span>';
+        }
+
+        html += '<div class="borrow-card ' + cls + pulseCls + '">' +
+            thumbHtml +
+            '<div class="borrow-info"><div class="borrow-title">' + (r.bookTitle || '已删除') + '</div>' +
+            '<div class="borrow-meta">' + (statusText[r.status] || '') + overdueInfo + '</div>' +
+            '<div class="borrow-dates"><i class="bi bi-calendar3"></i>' + formatDate(r.borrowTime) + ' <i class="bi bi-arrow-right"></i> ' + formatDate(r.dueTime) + (r.returnTime ? ' <i class="bi bi-arrow-right"></i> ' + formatDate(r.returnTime) : '') + '</div></div>' +
+            '<div class="borrow-status">' + actionHtml + '</div></div>';
+    });
+    document.getElementById('borrowList').innerHTML = html;
+}
+
+// 自定义确认弹窗
+function showConfirm(id, title) {
+    var overlay = document.getElementById('confirmOverlay');
+    overlay.style.display = '';
+    overlay.innerHTML = '<div class="confirm-overlay">' +
+        '<div class="confirm-dialog">' +
+            '<div class="confirm-icon">📚</div>' +
+            '<div class="confirm-title">确认归还</div>' +
+            '<div class="confirm-desc">确定归还《' + title + '》吗？提交后需等待管理员审批。</div>' +
+            '<div class="confirm-actions">' +
+                '<button class="btn-cancel" onclick="closeConfirm()">取消</button>' +
+                '<button class="btn-confirm" id="confirmBtn" onclick="doReturn(' + id + ')">确认归还</button>' +
+            '</div>' +
+        '</div></div>';
+}
+
+function closeConfirm() {
+    document.getElementById('confirmOverlay').style.display = 'none';
+}
+
+async function doReturn(id) {
+    var btn = document.getElementById('confirmBtn');
+    btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> 处理中...';
+    var res = await api.post('/borrow/return/' + id);
+    if (res.code === 200) {
+        closeConfirm();
+        showToast('success', '归还申请已提交！等待管理员审批。');
+        loadBorrows();
+    } else {
+        showToast('error', res.message || '归还失败');
+        btn.disabled = false; btn.innerHTML = '确认归还';
+    }
+}
+</script>
+</body>
+</html>

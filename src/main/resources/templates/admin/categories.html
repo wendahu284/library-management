@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>分类管理 - 智慧书阁管理后台</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
+    <link href="/css/app.css" rel="stylesheet">
+</head>
+<body>
+<div class="admin-main" id="contentArea">
+    <div id="alertBox"></div>
+
+    <!-- 添加分类 -->
+    <div class="card shadow-sm mb-4"><div class="card-body">
+        <h6 class="fw-bold mb-3"><i class="bi bi-plus-circle"></i> 添加分类</h6>
+        <form onsubmit="addCategory(event)" class="row g-2 align-items-end">
+            <div class="col-md-4"><label class="form-label">分类名称 <span class="required">*</span></label><input type="text" id="catName" class="form-control" required></div>
+            <div class="col-md-5"><label class="form-label">描述</label><input type="text" id="catDesc" class="form-control"></div>
+            <div class="col-md-3"><label class="form-label">&nbsp;</label><button type="submit" class="btn btn-primary w-100"><i class="bi bi-plus-lg"></i> 添加</button></div>
+        </form>
+    </div></div>
+
+    <!-- 分类列表 -->
+    <div class="table-container">
+        <table class="data-table"><thead><tr><th style="width:60px">ID</th><th>分类名称</th><th>描述</th><th>创建时间</th><th style="width:140px">操作</th></tr></thead><tbody id="tbody"></tbody></table>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="/js/app-common.js"></script>
+<script src="/js/admin-common.js"></script>
+<script>
+(function(){
+    if (!initAdminPage('分类管理')) return;
+    loadCategories();
+})();
+
+async function loadCategories() {
+    var res = await api.get('/admin/categories');
+    var html = '';
+    if (res.data && res.data.length) {
+        res.data.forEach(function(c) {
+            html += '<tr>' +
+                '<td><span class="text-muted">' + c.id + '</span></td>' +
+                '<td><input type="text" id="name' + c.id + '" class="form-control form-control-sm" value="' + (c.name||'') + '" style="max-width:200px"></td>' +
+                '<td><input type="text" id="desc' + c.id + '" class="form-control form-control-sm" value="' + (c.description||'') + '"></td>' +
+                '<td>' + formatDate(c.createTime) + '</td>' +
+                '<td><div class="row-actions">' +
+                    '<button class="btn btn-sm btn-outline-primary" onclick="updateCategory(' + c.id + ')"><i class="bi bi-check-lg"></i> 保存</button> ' +
+                    '<button class="btn btn-sm btn-outline-danger" onclick="deleteCategory(' + c.id + ",'" + (c.name||'').replace(/'/g,"\\'") + "')" + '"><i class="bi bi-trash"></i></button>' +
+                '</div></td></tr>';
+        });
+    } else {
+        html = '<tr><td colspan="5"><div class="table-empty"><div class="empty-svg"><svg width="80" height="80" viewBox="0 0 80 80" fill="none"><rect x="15" y="10" width="50" height="60" rx="6" stroke="#d0d5dd" stroke-width="2" fill="#f8f9fa"/><line x1="28" y1="28" x2="52" y2="28" stroke="#e5e7eb" stroke-width="2"/><line x1="28" y1="40" x2="52" y2="40" stroke="#e5e7eb" stroke-width="2"/><line x1="28" y1="52" x2="45" y2="52" stroke="#e5e7eb" stroke-width="2"/></svg></div><div class="empty-title">暂无分类</div><div class="empty-desc">添加第一个图书分类吧</div><button class="btn btn-primary btn-sm" onclick="document.getElementById(\'catName\').focus()"><i class="bi bi-plus-circle"></i> 添加分类</button></div></td></tr>';
+    }
+    document.getElementById('tbody').innerHTML = html;
+}
+
+async function addCategory(e) {
+    e.preventDefault();
+    var name = document.getElementById('catName').value.trim();
+    if (!name) { showAlert('alertBox', 'warning', '请输入分类名称'); return; }
+    var res = await api.post('/admin/categories', { name: name, description: document.getElementById('catDesc').value.trim() });
+    if (res.code === 200) { showToast('success', '添加成功'); document.getElementById('catName').value=''; document.getElementById('catDesc').value=''; loadCategories(); }
+    else showAlert('alertBox', 'danger', res.message);
+}
+
+async function updateCategory(id) {
+    var name = document.getElementById('name'+id).value.trim();
+    var desc = document.getElementById('desc'+id).value.trim();
+    if (!name) { showToast('warning', '分类名称不能为空'); return; }
+    var res = await api.put('/admin/categories/' + id, { name: name, description: desc });
+    if (res.code === 200) { showToast('success', '更新成功'); }
+    else showToast('error', res.message);
+}
+
+async function deleteCategory(id, name) {
+    if (!confirm('确定删除分类「' + name + '」？')) return;
+    var res = await api.del('/admin/categories/' + id);
+    if (res.code === 200) { showToast('success', '删除成功'); loadCategories(); }
+    else showToast('error', res.message || '删除失败（可能有关联图书）');
+}
+</script>
+</body>
+</html>

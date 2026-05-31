@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>系统设置 - 智慧书阁管理后台</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
+    <link href="/css/app.css" rel="stylesheet">
+</head>
+<body>
+<div class="admin-main" id="contentArea">
+    <div id="alertBox"></div>
+    <ul class="nav nav-tabs mb-4" id="settingsTabs">
+        <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#pwdTab">修改密码</button></li>
+        <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#announceTab">公告管理</button></li>
+        <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#paramTab">系统参数</button></li>
+    </ul>
+
+    <div class="tab-content">
+        <!-- 修改密码 -->
+        <div class="tab-pane fade show active" id="pwdTab">
+            <div style="max-width:420px;margin:0 auto;">
+                <div class="text-center mb-4"><i class="bi bi-shield-lock" style="font-size:2.5rem;color:var(--primary);"></i><h5 class="mt-2 fw-bold">修改密码</h5><p class="text-muted small">修改后需要重新登录</p></div>
+                <div class="card shadow-sm"><div class="card-body p-4">
+                    <div id="pwdMsg"></div>
+                    <form onsubmit="changePwd(event)">
+                        <div class="mb-3"><label class="form-label">原密码 <span class="required">*</span></label>
+                            <div class="input-group"><span class="input-group-text"><i class="bi bi-key"></i></span><input type="password" id="oldPwd" class="form-control" required></div>
+                        </div>
+                        <div class="mb-3"><label class="form-label">新密码 <span class="required">*</span></label>
+                            <div class="input-group"><span class="input-group-text"><i class="bi bi-lock"></i></span><input type="password" id="newPwd" class="form-control" required minlength="6"></div>
+                        </div>
+                        <div class="mb-3"><label class="form-label">确认新密码 <span class="required">*</span></label>
+                            <div class="input-group"><span class="input-group-text"><i class="bi bi-lock-fill"></i></span><input type="password" id="confirmPwd" class="form-control" required></div>
+                        </div>
+                        <button type="submit" class="btn btn-primary w-100" style="background:linear-gradient(135deg,#2563eb,#7c3aed);border:none;"><i class="bi bi-key"></i> 修改密码</button>
+                    </form>
+                </div></div>
+            </div>
+        </div>
+
+        <!-- 公告管理 -->
+        <div class="tab-pane fade" id="announceTab">
+            <div class="card shadow-sm mb-3"><div class="card-body">
+                <h6 class="fw-bold mb-3"><i class="bi bi-plus-circle"></i> 发布公告</h6>
+                <form onsubmit="addAnnouncement(event)" class="row g-2 align-items-end">
+                    <div class="col-md-4"><input type="text" id="annTitle" class="form-control" placeholder="公告标题" required></div>
+                    <div class="col-md-5"><input type="text" id="annContent" class="form-control" placeholder="公告内容"></div>
+                    <div class="col-md-3"><button type="submit" class="btn btn-primary w-100" style="background:linear-gradient(135deg,#2563eb,#7c3aed);border:none;"><i class="bi bi-megaphone"></i> 发布</button></div>
+                </form>
+            </div></div>
+            <div id="announceListContainer">
+                <div class="text-center py-5 text-muted">加载中...</div>
+            </div>
+            <div id="annPagination" class="pagination-bar"></div>
+        </div>
+
+        <!-- 系统参数 -->
+        <div class="tab-pane fade" id="paramTab">
+            <div class="row g-4" id="configCards"><div class="col-12 text-center py-5 text-muted">加载中...</div></div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="/js/app-common.js"></script>
+<script src="/js/admin-common.js"></script>
+<script>
+(function(){
+    if (!initAdminPage('系统设置')) return;
+    loadAnnouncements();
+    loadConfigs();
+})();
+
+// 修改密码
+async function changePwd(e) {
+    e.preventDefault();
+    var np = document.getElementById('newPwd').value;
+    if (np !== document.getElementById('confirmPwd').value) { showAlert('pwdMsg', 'danger', '两次新密码不一致'); return; }
+    var res = await api.put('/auth/password', {
+        oldPassword: document.getElementById('oldPwd').value,
+        newPassword: np, confirmPassword: document.getElementById('confirmPwd').value
+    });
+    if (res.code === 200) {
+        showAlert('pwdMsg', 'success', '密码修改成功，3秒后跳转登录');
+        setTimeout(function() { auth.clearUser(); location.href = '/admin/login.html'; }, 3000);
+    } else {
+        showAlert('pwdMsg', 'danger', res.message);
+    }
+}
+
+// 公告管理
+var annPageNum = 1, annPageSize = 10;
+
+async function loadAnnouncements(page) {
+    if (page) annPageNum = page;
+    var res = await api.get('/admin/announcements', { pageNum: annPageNum, pageSize: annPageSize });
+    var pageData = res.data;
+    var list = pageData && pageData.records || [];
+    var html = '';
+    if (list.length) {
+        list.forEach(function(a) {
+            html += '<div class="announce-card-item">' +
+                '<div class="ann-info"><div class="ann-title">' + a.title + '</div>' +
+                '<div class="ann-meta">' + (a.content||'') + (a.content ? ' · ' : '') + formatDate(a.createTime) + '</div></div>' +
+                '<div class="ann-actions">' +
+                    '<span class="badge ' + (a.active === 1 ? 'badge-success' : 'badge-secondary') + '">' + (a.active === 1 ? '显示中' : '已隐藏') + '</span>' +
+                    '<button class="btn btn-sm btn-outline-warning" onclick="toggleAnnouncement(' + a.id + ',' + a.active + ')">' + (a.active === 1 ? '隐藏' : '显示') + '</button>' +
+                    '<button class="btn btn-sm btn-outline-danger" onclick="deleteAnnouncement(' + a.id + ')"><i class="bi bi-trash"></i></button>' +
+                '</div></div>';
+        });
+    } else {
+        html = '<div class="table-empty"><div class="emoji-icon">📢</div><div class="empty-title">暂无公告</div><div class="empty-desc">发布第一条公告吧</div></div>';
+    }
+    document.getElementById('announceListContainer').innerHTML = html;
+    renderPagination('annPagination', pageData, 'loadAnnouncements');
+}
+
+async function addAnnouncement(e) {
+    e.preventDefault();
+    var res = await api.post('/admin/announcements', {
+        title: document.getElementById('annTitle').value.trim(),
+        content: document.getElementById('annContent').value.trim()
+    });
+    if (res.code === 200) {
+        document.getElementById('annTitle').value = '';
+        document.getElementById('annContent').value = '';
+        showToast('success', '公告发布成功');
+        loadAnnouncements(1);
+    } else {
+        showToast('error', res.message);
+    }
+}
+
+async function toggleAnnouncement(id, currentActive) {
+    var res = await api.put('/admin/announcements/' + id, { active: currentActive === 1 ? 0 : 1 });
+    if (res.code === 200) { showToast('success', '状态已更新'); loadAnnouncements(); }
+    else showToast('error', res.message);
+}
+
+async function deleteAnnouncement(id) {
+    if (!confirm('确定删除这条公告吗？')) return;
+    var res = await api.del('/admin/announcements/' + id);
+    if (res.code === 200) { showToast('success', '公告已删除'); loadAnnouncements(); }
+    else showToast('error', res.message);
+}
+
+// 系统参数 — 卡片展示
+async function loadConfigs() {
+    var res = await api.get('/admin/configs');
+    var list = res.data || [];
+    // 只取前3个核心参数
+    var core = list.filter(function(c) { return c.configKey.indexOf('library.') === 0; });
+    var html = '';
+    core.forEach(function(c) {
+        html += '<div class="col-md-4"><div class="param-card">' +
+            '<div class="param-key"><code>' + c.configKey + '</code></div>' +
+            '<div class="param-value" style="color:var(--primary)">' + c.configValue + '</div>' +
+            '<div class="param-desc">' + (c.description || '') + '</div>' +
+            '<div class="param-badge"><span class="badge ' + (c.editable === 1 ? 'badge-warning' : 'badge-secondary') + '">' + (c.editable === 1 ? '可修改' : '只读') + '</span></div>' +
+        '</div></div>';
+    });
+    document.getElementById('configCards').innerHTML = html || '<div class="col-12 text-center text-muted py-4">暂无参数</div>';
+}
+</script>
+</body>
+</html>
