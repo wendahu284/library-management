@@ -74,7 +74,7 @@ function getSidebarHTML(user) {
     '</nav>',
     '<div class="sidebar-footer">',
       '<div class="footer-row">',
-        '<span class="sidebar-version">v2.1.0</span>',
+        '<span class="sidebar-version">v3.0.0</span>',
         '<div>',
           '<button class="theme-toggle" onclick="toggleDarkMode()" title="切换主题"><i class="bi bi-moon" id="themeIcon"></i></button>',
           '<button class="theme-toggle" onclick="adminLogout()" title="退出登录"><i class="bi bi-box-arrow-right"></i></button>',

@@ -35,12 +35,12 @@
 
 <div class="container mt-4">
     <!-- 统计卡片 -->
-    <div class="row g-3 mb-4" id="statsRow"></div>
+    <div class="row g-3 mb-5" id="statsRow"></div>
 
     <!-- 公告栏 -->
-    <div class="alert alert-info d-flex align-items-center gap-2 py-2 px-3 mb-4" id="announceBar" style="display:none;">
-        <i class="bi bi-megaphone flex-shrink-0"></i>
-        <span id="announceText" class="small flex-grow-1"></span>
+    <div class="d-flex align-items-center gap-2 py-3 px-4 mb-4" id="announceBar" style="display:none;background:var(--bg-white);border:1px solid var(--border);border-left:3px solid var(--primary);border-radius:var(--radius);">
+        <i class="bi bi-megaphone flex-shrink-0" style="color:var(--primary);"></i>
+        <span id="announceText" class="flex-grow-1" style="font-size:var(--fs-sm);color:var(--text-secondary);"></span>
         <button class="btn-close" onclick="this.parentElement.style.display='none'"></button>
     </div>
 
@@ -48,13 +48,13 @@
     <div class="row g-4 mb-4">
         <div class="col-lg-7">
             <div class="card">
-                <div class="card-header"><i class="bi bi-fire text-danger"></i> 热门排行</div>
+                <div class="card-header" style="font-size:var(--fs-sm);letter-spacing:0.3px;"><i class="bi bi-bookmark" style="color:var(--primary);margin-right:8px;"></i> 热门排行</div>
                 <div class="card-body p-3" id="popularList"></div>
             </div>
         </div>
         <div class="col-lg-5">
             <div class="card">
-                <div class="card-header"><i class="bi bi-star text-warning"></i> 最新上架</div>
+                <div class="card-header" style="font-size:var(--fs-sm);letter-spacing:0.3px;"><i class="bi bi-plus-circle" style="color:var(--text-muted);margin-right:8px;"></i> 最新上架</div>
                 <div class="card-body p-3"><div class="row g-3" id="latestGrid"></div></div>
             </div>
         </div>
@@ -62,12 +62,12 @@
 
     <!-- 借阅提醒 时间轴 -->
     <div class="card mb-4">
-        <div class="card-header d-flex justify-content-between align-items-center">
-            <span><i class="bi bi-clock"></i> 借阅提醒</span>
+        <div class="card-header d-flex justify-content-between align-items-center" style="font-size:var(--fs-sm);letter-spacing:0.3px;">
+            <span><i class="bi bi-clock-history" style="margin-right:8px;"></i> 借阅提醒</span>
             <a href="/student/my-borrows" class="btn btn-sm btn-outline-primary">查看全部</a>
         </div>
         <div class="card-body p-0" id="reminderList">
-            <div class="p-4 text-center text-muted"><i class="bi bi-check-circle fs-3 d-block mb-2 text-success"></i>暂无借阅，去发现好书吧！</div>
+            <div class="p-4 text-center text-muted"><i class="bi bi-check-circle fs-3 d-block mb-2" style="color:var(--success);"></i>暂无借阅，去发现好书吧！</div>
         </div>
     </div>
 </div>
@@ -134,21 +134,20 @@ async function loadDashboard() {
     var pending = borrows.filter(function(b){ return b.status === 3; }).length;
     var returned = borrows.filter(function(b){ return b.status === 1; }).length;
 
-    // 统计卡片
+    // 统计卡片（杂志风 — 不再使用高饱和度颜色）
     var stats = [
-        { icon:'bi-journal-check', color:'#2563eb', bg:'#dbeafe', label:'借阅中', value:borrowing, trend:'+' + (borrowing || 0) },
-        { icon:'bi-exclamation-triangle', color:'#dc2626', bg:'#fee2e2', label:'已逾期', value:overdue, trend: overdue > 0 ? '+' + overdue : '0' },
-        { icon:'bi-hourglass-split', color:'#d97706', bg:'#fef3c7', label:'待审批', value:pending, trend:'+' + (pending || 0) },
-        { icon:'bi-check2-all', color:'#16a34a', bg:'#dcfce7', label:'已归还', value:returned, trend:'+' + (returned || 0) }
+        { icon:'bi-journal-check', label:'借阅中', value:borrowing },
+        { icon:'bi-exclamation-triangle', label:'已逾期', value:overdue },
+        { icon:'bi-hourglass-split', label:'待审批', value:pending },
+        { icon:'bi-check2-all', label:'已归还', value:returned }
     ];
     var statsHtml = '';
-    stats.forEach(function(s) {
-        var trendClass = parseInt(s.trend) > 0 ? 'up' : '';
+    stats.forEach(function(s, i) {
+        var colors = ['#C2613F','#B23B3B','#B88638','#3D7055'];
         statsHtml += '<div class="col-md-3 col-6"><div class="stat-modern">' +
-            '<div class="stat-icon-round" style="background:' + s.color + '"><i class="bi ' + s.icon + '"></i></div>' +
-            '<div class="stat-body"><div class="number" style="color:' + s.color + '">' + s.value + '</div>' +
-            '<div class="label">' + s.label + '</div>' +
-            '<div class="trend ' + trendClass + '">较上周 ' + s.trend + '</div></div></div></div>';
+            '<div class="stat-icon-round" style="background:' + colors[i] + '"><i class="bi ' + s.icon + '"></i></div>' +
+            '<div class="stat-body"><div class="number">' + s.value + '</div>' +
+            '<div class="label">' + s.label + '</div></div></div></div>';
     });
     document.getElementById('statsRow').innerHTML = statsHtml;
 
